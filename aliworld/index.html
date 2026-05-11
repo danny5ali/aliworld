@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#0a0a0a">
   <title>ALIWORLD</title>
   <meta name="description" content="ALIWORLD. a place that remembers.">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
   <link rel="stylesheet" href="auth.css">
+  <link rel="stylesheet" href="game.css">
 </head>
 <body>
   <main>
@@ -33,7 +34,6 @@
       <h1>ALIWORLD</h1>
       <p class="tagline">a place that remembers.</p>
 
-      <!-- mode toggle: login vs signup -->
       <div class="mode-tabs">
         <button class="mode-tab active" data-mode="signup">create account</button>
         <button class="mode-tab" data-mode="login">log in</button>
@@ -42,59 +42,47 @@
       <form id="auth-form" autocomplete="off">
         <label for="email-input">
           <span>email</span>
-          <input
-            id="email-input"
-            type="email"
-            inputmode="email"
-            autocomplete="email"
-            required
-            placeholder="you@somewhere.com"
-          >
+          <input id="email-input" type="email" inputmode="email" autocomplete="email" required placeholder="you@somewhere.com">
         </label>
-
         <label for="password-input">
           <span>password</span>
-          <input
-            id="password-input"
-            type="password"
-            autocomplete="current-password"
-            required
-            minlength="6"
-            placeholder="at least 6 characters"
-          >
+          <input id="password-input" type="password" autocomplete="current-password" required minlength="6" placeholder="at least 6 characters">
         </label>
-
         <button type="submit" id="auth-submit">create account</button>
       </form>
 
       <p id="auth-message" class="message" aria-live="polite"></p>
     </section>
 
-    <!-- ============= HOME SCREEN (signed in placeholder) ============= -->
-    <section id="home-screen" class="screen">
-      <div class="sigil" aria-hidden="true">
-        <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-          <path d="M20 4 L36 32 L4 32 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M14 32 L26 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <h1>welcome</h1>
-      <p id="user-handle" class="user-info">—</p>
-      <p id="user-email" class="user-info-dim">—</p>
+    <!-- ============= GAME CONTAINER (signed in) ============= -->
+    <section id="game-screen" class="screen">
+      <div id="game-container"></div>
 
-      <div class="home-actions">
-        <p class="status-line">— the game starts here. coming soon. —</p>
-        <button id="logout-btn" class="ghost-btn">log out</button>
+      <!-- UI overlay floats above the Phaser canvas -->
+      <div id="game-overlay">
+        <button id="logout-btn" class="overlay-btn" title="log out">↺</button>
       </div>
     </section>
 
-    <!-- back link, only on auth screen -->
     <a href="/" id="back-link">← back to choose</a>
   </main>
 
-  <!-- supabase client (loaded from CDN, free) -->
+  <!-- supabase client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="supabase-client.js"></script>
+
+  <!-- phaser engine -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+
+  <!-- auth (must load before game so it can detect signed-in state) -->
   <script src="auth.js"></script>
+
+  <!-- game scenes -->
+  <script src="scenes/BootScene.js"></script>
+  <script src="scenes/HomeScene.js"></script>
+  <script src="scenes/OverworldScene.js"></script>
+
+  <!-- main game initialization -->
+  <script src="game.js"></script>
 </body>
 </html>

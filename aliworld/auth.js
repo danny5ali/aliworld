@@ -1,12 +1,12 @@
 /* ============================================
-   ALIWORLD — auth flow
-   handles signup, login, logout, and screen routing
+   ALIWORLD — auth flow (updated for step 7)
+   handles signup, login, logout
+   on signed-in: boots the Phaser game
    ============================================ */
 
 (function() {
   'use strict';
 
-  // grab supabase client from supabase-client.js
   const supabase = window.aliworldSupabase;
   if (!supabase) {
     console.error('[aliworld] aliworldSupabase not initialized; aborting auth.');
@@ -17,7 +17,7 @@
   const screens = {
     loading: document.getElementById('loading-screen'),
     auth: document.getElementById('auth-screen'),
-    home: document.getElementById('home-screen')
+    game: document.getElementById('game-screen')
   };
 
   const form = document.getElementById('auth-form');
@@ -27,12 +27,10 @@
   const messageEl = document.getElementById('auth-message');
   const modeTabs = document.querySelectorAll('.mode-tab');
   const logoutBtn = document.getElementById('logout-btn');
-  const userHandleEl = document.getElementById('user-handle');
-  const userEmailEl = document.getElementById('user-email');
   const backLink = document.getElementById('back-link');
 
   // ============ STATE ============
-  let currentMode = 'signup';  // 'signup' or 'login'
+  let currentMode = 'signup';
 
   // ============ SCREEN MANAGEMENT ============
   function showScreen(name) {
@@ -40,7 +38,6 @@
       if (!el) return;
       el.classList.toggle('visible', key === name);
     });
-    // show back link only on auth screen
     if (backLink) {
       backLink.classList.toggle('visible', name === 'auth');
     }
@@ -58,7 +55,7 @@
     setMessage('', null);
   }
 
-  // ============ MODE TOGGLE (signup vs login) ============
+  // ============ MODE TOGGLE ============
   function setMode(mode) {
     currentMode = mode;
     modeTabs.forEach(tab => {
@@ -101,11 +98,9 @@
         return;
       }
 
-      // signup with email confirmation OFF means we get a session immediately
       if (result.data && result.data.session) {
         await handleSignedIn(result.data.user);
       } else {
-        // edge case: signup happened but no session (would happen with email confirm ON)
         setMessage('check your email to confirm your account.', 'success');
         submitBtn.disabled = false;
       }
@@ -118,7 +113,7 @@
 
   // ============ SIGNED-IN STATE ============
   async function handleSignedIn(user) {
-    // fetch the aw_users row (created automatically by the supabase trigger)
+    // fetch the aw_users row
     const { data: userData, error } = await supabase
       .from('aw_users')
       .select('handle, email')
@@ -129,13 +124,10 @@
     let email = (userData && userData.email) || user.email;
 
     if (error) {
-      console.warn('[aliworld] could not fetch aw_users row (may not be ready yet):', error.message);
+      console.warn('[aliworld] could not fetch aw_users row:', error.message);
     }
 
-    if (userHandleEl) userHandleEl.textContent = handle;
-    if (userEmailEl) userEmailEl.textContent = email;
-
-    // update last_played_at silently (best-effort, ignore errors)
+    // update last_played_at (best-effort)
     supabase
       .from('aw_users')
       .update({ last_played_at: new Date().toISOString() })
@@ -143,15 +135,28 @@
       .then(() => {})
       .catch(() => {});
 
-    showScreen('home');
+    // show game screen
+    showScreen('game');
+
+    // small delay so the screen is visible before phaser instantiates
+    // (phaser sizes to its container; the container must be visible first)
+    setTimeout(() => {
+      if (typeof window.aliworldBootGame === 'function') {
+        window.aliworldBootGame(user.id, handle, email);
+      } else {
+        console.error('[aliworld] aliworldBootGame not available; check script load order');
+      }
+    }, 50);
   }
 
   // ============ LOGOUT ============
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
+      if (typeof window.aliworldShutdownGame === 'function') {
+        window.aliworldShutdownGame();
+      }
       await supabase.auth.signOut();
       showScreen('auth');
-      // clear form
       emailInput.value = '';
       passwordInput.value = '';
       clearMessage();
@@ -179,11 +184,14 @@
     }
   }
 
-  // listen for auth state changes (e.g., signed in from another tab)
+  // listen for auth state changes
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT') {
+      if (typeof window.aliworldShutdownGame === 'function') {
+        window.aliworldShutdownGame();
+      }
       showScreen('auth');
-    } else if (event === 'SIGNED_IN' && session) {
+    } else if (event === 'SIGNED_IN' && session && !window.aliworldGame?.booted) {
       handleSignedIn(session.user);
     }
   });
