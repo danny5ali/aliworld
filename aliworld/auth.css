@@ -1,0 +1,305 @@
+/* ============================================
+   ALIWORLD — auth screens
+   moody, mobile-first, no frameworks
+   ============================================ */
+
+:root {
+  --ink: #0a0a0a;
+  --ink-soft: #14110f;
+  --ink-card: #1a1614;
+  --cream: #ebe2d2;
+  --cream-dim: #8c8478;
+  --cream-faint: #5a544a;
+  --red: #b32a1f;
+  --red-dim: #6a1612;
+  --red-glow: rgba(179, 42, 31, 0.15);
+  --border: rgba(235, 226, 210, 0.12);
+  --border-focus: rgba(179, 42, 31, 0.5);
+  --success: #4a7a3a;
+  --error: #b32a1f;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  min-height: 100vh;
+  background: var(--ink);
+  color: var(--cream);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+main {
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+}
+
+/* ============ SCREENS ============ */
+.screen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.screen.visible {
+  display: flex;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============ SIGIL ============ */
+.sigil {
+  width: 56px;
+  height: 56px;
+  color: var(--red);
+  margin-bottom: 0.5rem;
+}
+.sigil svg { width: 100%; height: 100%; }
+
+/* ============ TYPE ============ */
+h1 {
+  font-size: 1.75rem;
+  letter-spacing: 0.1em;
+  color: var(--red);
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.tagline {
+  font-size: 0.9375rem;
+  color: var(--cream-dim);
+  font-style: italic;
+  margin-bottom: 1.5rem;
+}
+
+.loading-text {
+  color: var(--cream-dim);
+  font-style: italic;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+}
+
+/* ============ MODE TABS ============ */
+.mode-tabs {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--ink-soft);
+  padding: 0.25rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+.mode-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--cream-faint);
+  font-family: inherit;
+  font-size: 0.875rem;
+  letter-spacing: 0.03em;
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.mode-tab.active {
+  background: var(--ink-card);
+  color: var(--cream);
+}
+
+.mode-tab:hover:not(.active) {
+  color: var(--cream-dim);
+}
+
+/* ============ FORM ============ */
+form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+label > span {
+  font-size: 0.8125rem;
+  color: var(--cream-dim);
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+}
+
+input[type="email"],
+input[type="password"],
+input[type="text"] {
+  background: var(--ink-soft);
+  border: 1px solid var(--border);
+  color: var(--cream);
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.875rem 1rem;
+  border-radius: 4px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  width: 100%;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  background: var(--ink-card);
+}
+
+input::placeholder {
+  color: var(--cream-faint);
+}
+
+button[type="submit"] {
+  background: var(--red);
+  color: var(--cream);
+  border: none;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.875rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+button[type="submit"]:hover {
+  background: var(--red-dim);
+}
+
+button[type="submit"]:active {
+  transform: scale(0.99);
+}
+
+button[type="submit"]:disabled {
+  background: var(--cream-faint);
+  cursor: not-allowed;
+}
+
+/* ============ MESSAGE ============ */
+.message {
+  min-height: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--cream-dim);
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+.message.success { color: var(--cream); font-style: normal; }
+.message.error { color: var(--error); font-style: normal; }
+
+/* ============ HOME SCREEN ============ */
+.user-info {
+  font-size: 1.125rem;
+  color: var(--cream);
+  font-weight: 500;
+}
+
+.user-info-dim {
+  font-size: 0.875rem;
+  color: var(--cream-dim);
+  margin-top: -0.5rem;
+}
+
+.home-actions {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.status-line {
+  color: var(--cream-faint);
+  font-style: italic;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+}
+
+.ghost-btn {
+  background: transparent;
+  color: var(--cream-dim);
+  border: 1px solid var(--border);
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.625rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ghost-btn:hover {
+  color: var(--cream);
+  border-color: var(--cream-dim);
+}
+
+/* ============ BACK LINK ============ */
+#back-link {
+  display: none;
+  position: fixed;
+  top: 1.25rem;
+  left: 1.25rem;
+  color: var(--cream-dim);
+  text-decoration: none;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+#back-link.visible {
+  display: inline-block;
+}
+
+#back-link:hover {
+  color: var(--cream);
+}
+
+/* ============ MOBILE TUNING ============ */
+@media (max-width: 480px) {
+  body { padding: 1.5rem 1rem; }
+  main { max-width: 100%; }
+  h1 { font-size: 1.5rem; }
+  .tagline { font-size: 0.875rem; }
+  input { font-size: 16px; } /* iOS won't zoom on focus if 16px or larger */
+}
+
+/* ============ REDUCED MOTION ============ */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
