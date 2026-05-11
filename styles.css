@@ -1,0 +1,207 @@
+/* ============================================
+   ALIWORLD splash chooser
+   moody, mobile-first, no frameworks
+   ============================================ */
+
+:root {
+  --ink: #0a0a0a;
+  --ink-soft: #14110f;
+  --cream: #ebe2d2;
+  --cream-dim: #8c8478;
+  --red: #b32a1f;
+  --red-dim: #6a1612;
+  --border: rgba(235, 226, 210, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  min-height: 100vh;
+  background: var(--ink);
+  color: var(--cream);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  min-height: 100vh;
+  min-height: 100dvh; /* mobile-safe viewport */
+}
+
+main {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  align-items: center;
+}
+
+/* ---------- header / brand ---------- */
+.brand {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sigil {
+  width: 56px;
+  height: 56px;
+  color: var(--red);
+  margin-bottom: 0.5rem;
+}
+
+.sigil svg {
+  width: 100%;
+  height: 100%;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  color: var(--cream-dim);
+  text-transform: lowercase;
+}
+
+.tagline {
+  font-size: 0.875rem;
+  color: var(--cream-dim);
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+/* ---------- chooser cards ---------- */
+.chooser {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .chooser {
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  text-decoration: none;
+  color: var(--cream);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.card:hover, .card:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--red);
+  outline: none;
+}
+
+.card-thumb {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a1614 0%, #0a0a0a 100%);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-blnt .card-thumb {
+  background: linear-gradient(135deg, #2a1a14 0%, #0a0a0a 100%);
+}
+
+.card-aliworld .card-thumb {
+  background: linear-gradient(135deg, #14141a 0%, #0a0a0a 100%);
+}
+
+.card-label {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--cream);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.card-aliworld .card-label {
+  color: var(--red);
+}
+
+.card-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card-body h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--cream);
+}
+
+.card-body p {
+  font-size: 0.9375rem;
+  color: var(--cream-dim);
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.card-cta {
+  font-size: 0.875rem;
+  color: var(--red);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  margin-top: auto;
+}
+
+/* ---------- footer ---------- */
+footer {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+footer p {
+  font-size: 0.75rem;
+  color: var(--cream-dim);
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+}
+
+/* ---------- mobile fine-tune ---------- */
+@media (max-width: 480px) {
+  body { padding: 1.5rem 1rem; }
+  main { gap: 2rem; }
+  .brand { gap: 0.25rem; }
+  h1 { font-size: 1.25rem; }
+  .card-body { padding: 1.25rem; }
+  .card-body h2 { font-size: 1rem; }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
