@@ -1,8 +1,4 @@
 // aliworld/scenes/OverworldScene.js
-//
-// placeholder overworld. holds the player, lets them walk around,
-// and (for now) lets them press C to trigger a test combat with Mark.
-// real encounter triggers will replace the C-key in step 9 (episode 1).
 
 class OverworldScene extends Phaser.Scene {
   constructor() {
@@ -10,13 +6,10 @@ class OverworldScene extends Phaser.Scene {
   }
 
   init(data) {
-    // catch return-from-combat state
     if (data && data.combatResult) {
       this.lastCombatResult = data.combatResult;
       this.lastEnemyKey = data.enemyKey;
     }
-
-    // persist player state across scene transitions
     if (!this.registry.has('playerState')) {
       this.registry.set('playerState', {
         hp: 30, maxHp: 30,
@@ -30,27 +23,19 @@ class OverworldScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
 
-    // placeholder field
     this.add.rectangle(0, 0, width, height, 0x1a2a1a).setOrigin(0, 0);
 
-    this.add.text(20, 20, 'overworld (placeholder)', {
+    this.add.text(20, 20, 'overworld', {
       fontFamily: 'monospace', fontSize: '14px', color: '#cccccc'
     });
 
-    this.add.text(20, 40, 'arrows to move. press C to test combat with Mark.', {
-      fontFamily: 'monospace', fontSize: '12px', color: '#888888'
-    });
-
-    // post-combat banner
     if (this.lastCombatResult) {
       const msg = this.lastCombatResult === 'win'
         ? `you beat ${this.lastEnemyKey}.`
-        : 'you lost. (test mode: hp restored)';
-      this.add.text(width / 2, 80, msg, {
-        fontFamily: 'monospace', fontSize: '16px', color: '#ffcc66'
+        : 'you lost. hp restored.';
+      this.add.text(width / 2, 60, msg, {
+        fontFamily: 'monospace', fontSize: '14px', color: '#ffcc66'
       }).setOrigin(0.5);
-
-      // in test mode, restore hp after a loss so we can keep iterating
       if (this.lastCombatResult === 'lose') {
         const p = this.registry.get('playerState');
         p.hp = p.maxHp;
@@ -58,14 +43,36 @@ class OverworldScene extends Phaser.Scene {
       }
     }
 
-    // player placeholder
     this.player = this.add.rectangle(width / 2, height / 2, 32, 48, 0x4488ff)
       .setStrokeStyle(2, 0xffffff);
 
-    // input
+    // episode 1 entry button
+    const e1Btn = this.add.rectangle(width / 2, height / 2 + 80, 240, 44, 0xb32a1f)
+      .setInteractive({ useHandCursor: true });
+    this.add.text(width / 2, height / 2 + 80, 'EPISODE 1 — THE FIELD', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ebe2d2'
+    }).setOrigin(0.5);
+    e1Btn.on('pointerover', () => e1Btn.setFillStyle(0x6a1612));
+    e1Btn.on('pointerout', () => e1Btn.setFillStyle(0xb32a1f));
+    e1Btn.on('pointerup', () => {
+      this.registry.set('e1Progress', 'intro');
+      this.scene.start('E1Scene');
+    });
+
+    // test combat shortcut still available
+    this.add.text(20, height - 30, 'C = test combat', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#444444'
+    });
+
     this.cursors = this.input.keyboard.createCursorKeys();
     this.combatKey = this.input.keyboard.addKey('C');
     this.combatKey.on('down', () => this.startTestCombat());
+
+    this.e1Key = this.input.keyboard.addKey('E');
+    this.e1Key.on('down', () => {
+      this.registry.set('e1Progress', 'intro');
+      this.scene.start('E1Scene');
+    });
   }
 
   update() {
@@ -81,13 +88,12 @@ class OverworldScene extends Phaser.Scene {
     const playerState = this.registry.get('playerState');
     this.scene.start('CombatScene', {
       enemy: {
-        key: 'mark',
-        name: 'Mark',
+        key: 'mark', name: 'Mark',
         hp: 35, maxHp: 35,
         atk: 5, def: 4, spd: 4, lck: 3,
         moves: ['STRIKE', 'SLIP', 'HOLD']
       },
-      playerState: playerState,
+      playerState,
       returnScene: 'OverworldScene'
     });
   }
