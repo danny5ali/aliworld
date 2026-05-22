@@ -1,6 +1,4 @@
 // aliworld/game.js
-//
-// phaser game bootstrapper. registers all scenes and starts at BootScene.
 
 const gameConfig = {
   type: Phaser.AUTO,
@@ -17,7 +15,8 @@ const gameConfig = {
     BootScene,
     HomeScene,
     OverworldScene,
-    CombatScene
+    CombatScene,
+    E1Scene
   ]
 };
 

@@ -353,10 +353,20 @@ class CombatScene extends Phaser.Scene {
   // ---------- enemy ai ----------
 
   pickEnemyMove() {
-    // weighted random with a soft preference: heal if low hp, brace if shaken/bleeding,
-    // otherwise pick from attacks weighted by power
     const moves = this.enemy.moves;
     const hpRatio = this.enemy.hp / this.enemy.maxHp;
+
+    // walker ai: repeat the same move twice in a row before possibly switching
+    if (this.enemy.ai === 'repeat') {
+      if (this._lastEnemyMove && this._repeatUsed < 1) {
+        this._repeatUsed = (this._repeatUsed || 0) + 1;
+        return this._lastEnemyMove;
+      }
+      this._repeatUsed = 0;
+      const pick = moves[Math.floor(Math.random() * moves.length)];
+      this._lastEnemyMove = pick;
+      return pick;
+    }
 
     // low hp: try to heal
     if (hpRatio < 0.3) {
@@ -379,8 +389,15 @@ class CombatScene extends Phaser.Scene {
   showTelegraph(moveKey) {
     const move = MOVES[moveKey];
     if (!move) return;
-    const verb = move.telegraph || `winding up ${move.name}`;
-    this.telegraphText.setText(`${this.enemy.name} is ${verb}...`).setVisible(true);
+    // enemy-specific telegraph overrides (e.g. mark's conversation lines)
+    const enemyTelegraph = this.enemy.telegraph && this.enemy.telegraph[moveKey];
+    const verb = enemyTelegraph || move.telegraph || `winding up ${move.name}`;
+    // boss conversation style: show as dialogue, not "is X..."
+    const isBoss = this.enemy.isBoss;
+    const line = isBoss
+      ? `"${verb}"`
+      : `${this.enemy.name} is ${verb}...`;
+    this.telegraphText.setText(line).setVisible(true);
   }
 
   hideTelegraph() {
