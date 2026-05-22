@@ -1,7 +1,4 @@
-/* ============================================
-   HomeScene
-   the player's "home" — see your avatar, begin a run
-   ============================================ */
+// aliworld/scenes/HomeScene.js
 
 class HomeScene extends Phaser.Scene {
   constructor() {
@@ -12,10 +9,9 @@ class HomeScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     // ============ AMBIENT BACKGROUND ============
-    // dark background gradient (just a solid color for now, gradient comes with art)
     this.cameras.main.setBackgroundColor('#0a0a0a');
 
-    // subtle cult.18 sigil pulse in the background (drawn programmatically until art arrives)
+    // subtle cult.18 sigil pulse in the background
     const sigil = this.add.graphics();
     sigil.lineStyle(2, 0xb32a1f, 0.15);
     const cx = width / 2;
@@ -30,7 +26,6 @@ class HomeScene extends Phaser.Scene {
     sigil.lineBetween(cx - sigilSize * 0.4, cy + sigilSize * 0.5, cx + sigilSize * 0.4, cy + sigilSize * 0.5);
     sigil.setAlpha(0.4);
 
-    // sigil slow pulse
     this.tweens.add({
       targets: sigil,
       alpha: { from: 0.2, to: 0.5 },
@@ -41,16 +36,13 @@ class HomeScene extends Phaser.Scene {
     });
 
     // ============ MDNGHT AVATAR ============
-    // placeholder — the iconic MDNGHT from the reference sheet
     const avatar = this.add.image(width / 2, height / 2 + 20, 'mdnght_placeholder');
     avatar.setOrigin(0.5, 0.5);
 
-    // scale to fit nicely regardless of viewport
     const maxAvatarHeight = Math.min(height * 0.5, 280);
     const scale = Math.min(1, maxAvatarHeight / avatar.height);
     avatar.setScale(scale);
 
-    // subtle breathing animation
     this.tweens.add({
       targets: avatar,
       y: avatar.y + 4,
@@ -61,7 +53,8 @@ class HomeScene extends Phaser.Scene {
     });
 
     // ============ HANDLE / WELCOME TEXT ============
-    const handle = window.aliworldGame.userHandle || 'unknown';
+    // safe fallback — aliworldGame may not be ready yet on first load
+    const handle = (window.aliworldGame && window.aliworldGame.userHandle) || 'unknown';
     const welcomeText = this.add.text(width / 2, 60, handle, {
       fontFamily: '"Courier New", monospace',
       fontSize: '14px',
@@ -83,22 +76,14 @@ class HomeScene extends Phaser.Scene {
     });
     btnText.setOrigin(0.5, 0.5);
 
-    // hover / press states
-    btn.on('pointerover', () => {
-      btn.setFillStyle(0x6a1612);
-    });
-    btn.on('pointerout', () => {
-      btn.setFillStyle(0xb32a1f);
-    });
-    btn.on('pointerdown', () => {
-      btn.setScale(0.97);
-    });
+    btn.on('pointerover', () => btn.setFillStyle(0x6a1612));
+    btn.on('pointerout', () => btn.setFillStyle(0xb32a1f));
+    btn.on('pointerdown', () => btn.setScale(0.97));
     btn.on('pointerup', () => {
       btn.setScale(1);
       this.scene.start('OverworldScene');
     });
 
-    // helper text below the button
     this.add.text(width / 2, btnY + 36, '— episode 1 placeholder —', {
       fontFamily: '"Courier New", monospace',
       fontSize: '11px',
@@ -106,3 +91,5 @@ class HomeScene extends Phaser.Scene {
     }).setOrigin(0.5, 0.5);
   }
 }
+
+window.HomeScene = HomeScene;
