@@ -3,17 +3,9 @@
 let _phaserGame = null;
 
 window.aliworldBootGame = function(userId, handle, email) {
-  window.aliworldGame = {
-    booted: true,
-    userId,
-    userHandle: handle || 'unknown',
-    userEmail: email || ''
-  };
+  window.aliworldGame = { booted: true, userId, userHandle: handle || 'unknown', userEmail: email || '' };
 
-  if (_phaserGame) {
-    _phaserGame.destroy(true);
-    _phaserGame = null;
-  }
+  if (_phaserGame) { _phaserGame.destroy(true); _phaserGame = null; }
 
   const config = {
     type: Phaser.AUTO,
@@ -22,15 +14,13 @@ window.aliworldBootGame = function(userId, handle, email) {
     height: 600,
     backgroundColor: '#000000',
     pixelArt: true,
-    scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH
-    },
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     scene: [
       BootScene,
       CharacterCreationScene,
       HomeScene,
       OverworldScene,
+      AccessoryScene,
       CombatScene,
       E1Scene
     ]
@@ -41,10 +31,7 @@ window.aliworldBootGame = function(userId, handle, email) {
 };
 
 window.aliworldShutdownGame = function() {
-  if (_phaserGame) {
-    _phaserGame.destroy(true);
-    _phaserGame = null;
-  }
+  if (_phaserGame) { _phaserGame.destroy(true); _phaserGame = null; }
   window.game = null;
   if (window.aliworldGame) window.aliworldGame.booted = false;
 };

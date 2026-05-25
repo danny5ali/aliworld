@@ -1,8 +1,6 @@
 // aliworld/scenes/CharacterCreationScene.js
-//
-// step 1 of the game flow (after login, before HomeScene)
-// player picks: archetype (LCK/ATK/DEF/SPD) + skin tone (4) + hair color (4)
-// saves to supabase + registry, then advances to HomeScene
+// mobile-first. pick archetype + skin + hair.
+// includes lore per archetype, test battle, then confirm.
 
 class CharacterCreationScene extends Phaser.Scene {
   constructor() {
@@ -10,280 +8,338 @@ class CharacterCreationScene extends Phaser.Scene {
   }
 
   init() {
-    this.selected = {
-      archetype: 'atk',
-      skin: 'medium',
-      hair: 'black'
-    };
-    this.previewTextures = {};
+    this.selected = { archetype: 'atk', skin: 'medium', hair: 'black' };
+    this.phase = 'pick'; // 'pick' | 'confirm'
   }
 
   create() {
     const { width, height } = this.scale;
+    this.cx = width / 2;
 
-    // background
     this.add.rectangle(0, 0, width, height, 0x07070f).setOrigin(0, 0);
 
-    // title
-    this.add.text(width / 2, 32, 'WHO ARE YOU.', {
-      fontFamily: 'monospace', fontSize: '20px', color: '#ebe2d2', fontStyle: 'bold'
+    this.add.text(this.cx, 28, 'WHO ARE YOU.', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#ebe2d2', fontStyle: 'bold'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, 58, 'your build follows you through every episode.', {
-      fontFamily: 'monospace', fontSize: '12px', color: '#555566'
+    this.add.text(this.cx, 52, 'choose your build. it follows you through every episode.', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#444455'
     }).setOrigin(0.5);
 
-    // archetype cards
-    this.buildArchetypeCards();
-
-    // skin tone row
-    this.buildSwatchRow(
-      'skin tone',
-      height * 0.72,
-      ['light', 'medium', 'dark', 'deep'],
-      [0xe8c4a0, 0xb87840, 0x7a4820, 0x4a2810],
-      (val) => { this.selected.skin = val; this.refreshPreview(); },
-      'skin'
-    );
-
-    // hair color row
-    this.buildSwatchRow(
-      'hair',
-      height * 0.82,
-      ['black', 'brown', 'auburn', 'silver'],
-      [0x1a1a1a, 0x4a2e1a, 0x6b2e1a, 0xc8c8c8],
-      (val) => { this.selected.hair = val; this.refreshPreview(); },
-      'hair'
-    );
-
-    // confirm button
-    const btnY = height - 38;
-    const btn = this.add.rectangle(width / 2, btnY, 260, 44, 0xb32a1f)
-      .setInteractive({ useHandCursor: true });
-    const btnText = this.add.text(width / 2, btnY, 'ENTER ALIWORLD', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#ebe2d2', fontStyle: 'bold'
-    }).setOrigin(0.5);
-    btn.on('pointerover', () => btn.setFillStyle(0x8a1f15));
-    btn.on('pointerout',  () => btn.setFillStyle(0xb32a1f));
-    btn.on('pointerup',   () => this.confirm());
-
-    // preview container (center-right)
-    this.previewContainer = this.add.container(width * 0.72, height * 0.42);
-    this.previewSprite = null;
-    this.previewBg = this.add.rectangle(
-      width * 0.72, height * 0.42, 200, 340, 0x111120
-    ).setStrokeStyle(1, 0x333355);
-
-    this.refreshPreview();
+    this.buildCards();
+    this.buildSwatches();
+    this.buildConfirmRow();
+    this.refreshSelected();
   }
 
   // ─── ARCHETYPE CARDS ─────────────────────────────────────────────────────
 
-  buildArchetypeCards() {
+  buildCards() {
     const { width, height } = this.scale;
-    const archetypes = [
+    const isMobile = width < 600;
+
+    this.archetypes = [
       {
         key: 'lck',
         label: 'LCK',
-        desc: 'gambler',
-        stats: 'high luck. crits hit different.',
-        color: 0xd4a017
+        name: 'the gambler',
+        lore: 'moves like water. wins on readings others miss. one good hit ends it.',
+        stats: '+9 LCK  +4 SPD  +4 ATK  +4 DEF  25 HP',
+        color: 0xd4a017,
+        hex: '#d4a017'
       },
       {
         key: 'atk',
         label: 'ATK',
-        desc: 'fighter',
-        stats: 'heavy damage. glass cannon.',
-        color: 0xb32a1f
+        name: 'the fighter',
+        lore: 'trades clean. no hesitation. takes damage to give damage. glass cannon.',
+        stats: '+9 ATK  +4 SPD  +4 LCK  +3 DEF  28 HP',
+        color: 0xb32a1f,
+        hex: '#b32a1f'
       },
       {
         key: 'def',
         label: 'DEF',
-        desc: 'wall',
-        stats: 'takes everything. gives nothing back.',
-        color: 0x2a4a7a
+        name: 'the wall',
+        lore: 'built to absorb. every fight is a war of attrition. outlasts everything.',
+        stats: '+9 DEF  +40 HP  +4 ATK  +4 LCK  +3 SPD',
+        color: 0x2a4a8a,
+        hex: '#2a4a8a'
       },
       {
         key: 'spd',
         label: 'SPD',
-        desc: 'runner',
-        stats: 'always moves first. hard to pin.',
-        color: 0x2a7a4a
+        name: 'the runner',
+        lore: 'always moves first. hard to pin down. wins before the other side adjusts.',
+        stats: '+9 SPD  +5 ATK  +4 LCK  +4 DEF  28 HP',
+        color: 0x2a8a4a,
+        hex: '#2a8a4a'
       },
     ];
 
-    const cardW = 148;
-    const cardH = 180;
-    const startX = 24;
-    const cardY = height * 0.34;
+    // layout: 2x2 grid on mobile, 4-wide on desktop
+    const cols = isMobile ? 2 : 4;
+    const cardW = isMobile
+      ? Math.floor((width - 32) / 2) - 6
+      : Math.floor((width * 0.55 - 32) / 4) - 6;
+    const cardH = isMobile ? 160 : 200;
+    const startX = isMobile ? 16 + cardW / 2 : 16 + cardW / 2;
+    const startY = isMobile ? 90 : 80;
     const gap = 8;
 
-    this.archetypeCards = {};
+    this.cardObjects = {};
 
-    archetypes.forEach((arch, i) => {
-      const x = startX + i * (cardW + gap) + cardW / 2;
+    this.archetypes.forEach((arch, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = startX + col * (cardW + gap);
+      const y = startY + row * (cardH + gap) + cardH / 2;
 
-      const bg = this.add.rectangle(x, cardY, cardW, cardH, 0x111120)
-        .setStrokeStyle(2, arch.key === this.selected.archetype ? arch.color : 0x333344)
+      const bg = this.add.rectangle(x, y, cardW, cardH, 0x0d0d1a)
+        .setStrokeStyle(2, 0x222233)
         .setInteractive({ useHandCursor: true });
 
-      // archetype portrait (if loaded)
-      const portraitKey = `${arch.key}_pre_e1_portrait`;
+      // portrait or color block
+      const portraitKey = `${arch.key}_pre_e1_idle_0`;
       let portrait;
       if (this.textures.exists(portraitKey)) {
-        portrait = this.add.image(x, cardY - 20, portraitKey)
-          .setDisplaySize(80, 120)
+        portrait = this.add.image(x, y - cardH * 0.18, portraitKey)
+          .setDisplaySize(cardW * 0.55, cardH * 0.55)
           .setOrigin(0.5);
       } else {
-        portrait = this.add.rectangle(x, cardY - 20, 80, 120, arch.color, 0.3);
+        portrait = this.add.rectangle(x, y - cardH * 0.18, cardW * 0.5, cardH * 0.5, arch.color, 0.25);
       }
 
-      const label = this.add.text(x, cardY + 55, arch.label, {
-        fontFamily: 'monospace', fontSize: '16px',
-        color: '#' + arch.color.toString(16).padStart(6, '0'),
-        fontStyle: 'bold'
+      const label = this.add.text(x, y + cardH * 0.22, arch.label, {
+        fontFamily: 'monospace', fontSize: isMobile ? '14px' : '16px',
+        color: arch.hex, fontStyle: 'bold'
       }).setOrigin(0.5);
 
-      const desc = this.add.text(x, cardY + 73, arch.desc, {
-        fontFamily: 'monospace', fontSize: '11px', color: '#888899'
-      }).setOrigin(0.5);
-
-      const stats = this.add.text(x, cardY + 90, arch.stats, {
-        fontFamily: 'monospace', fontSize: '9px', color: '#555566',
-        wordWrap: { width: cardW - 12 }, align: 'center'
+      const name = this.add.text(x, y + cardH * 0.34, arch.name, {
+        fontFamily: 'monospace', fontSize: '10px', color: '#666677'
       }).setOrigin(0.5);
 
       bg.on('pointerover', () => {
-        if (this.selected.archetype !== arch.key) bg.setStrokeStyle(2, 0x666688);
+        if (this.selected.archetype !== arch.key) bg.setFillStyle(0x111122);
       });
       bg.on('pointerout', () => {
-        if (this.selected.archetype !== arch.key) bg.setStrokeStyle(2, 0x333344);
+        if (this.selected.archetype !== arch.key) bg.setFillStyle(0x0d0d1a);
       });
-      bg.on('pointerup', () => {
-        this.selectArchetype(arch.key);
-      });
+      bg.on('pointerup', () => this.selectArchetype(arch.key));
 
-      this.archetypeCards[arch.key] = { bg, color: arch.color };
+      this.cardObjects[arch.key] = { bg, color: arch.color, portrait, label, name };
     });
+
+    // lore + stats panel (right side on desktop, below cards on mobile)
+    const loreX = isMobile ? this.cx : width * 0.78;
+    const loreY = isMobile ? startY + (Math.ceil(4 / cols)) * (cardH + gap) + 20 : startY + cardH / 2;
+    const loreW = isMobile ? width - 32 : width * 0.38;
+
+    this.loreBg = this.add.rectangle(loreX, loreY + 60, loreW, isMobile ? 100 : 180, 0x0d0d1a)
+      .setStrokeStyle(1, 0x222233);
+
+    this.loreArchLabel = this.add.text(loreX, loreY + 10, '', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#ebe2d2', fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.loreText = this.add.text(loreX, loreY + 32, '', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#8a8070',
+      wordWrap: { width: loreW - 24 }, align: 'center'
+    }).setOrigin(0.5, 0);
+
+    this.statsText = this.add.text(loreX, loreY + 90, '', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#444455',
+      align: 'center', wordWrap: { width: loreW - 24 }
+    }).setOrigin(0.5, 0);
+
+    this._isMobile = isMobile;
+    this._cardH = cardH;
+    this._cardW = cardW;
+    this._cols = cols;
+    this._startY = startY;
+    this._gap = gap;
   }
 
   selectArchetype(key) {
-    // deselect all
-    Object.entries(this.archetypeCards).forEach(([k, card]) => {
-      card.bg.setStrokeStyle(2, 0x333344);
+    Object.entries(this.cardObjects).forEach(([k, card]) => {
+      card.bg.setFillStyle(0x0d0d1a).setStrokeStyle(2, 0x222233);
     });
-    // select new
-    const card = this.archetypeCards[key];
-    card.bg.setStrokeStyle(2, card.color);
+    const card = this.cardObjects[key];
+    card.bg.setFillStyle(0x111122).setStrokeStyle(2, card.color);
     this.selected.archetype = key;
-    this.refreshPreview();
+    this.refreshSelected();
   }
 
-  // ─── SWATCH ROWS ─────────────────────────────────────────────────────────
+  refreshSelected() {
+    const arch = this.archetypes.find(a => a.key === this.selected.archetype);
+    if (!arch) return;
+    this.loreArchLabel.setText(`${arch.label} — ${arch.name}`).setColor(arch.hex);
+    this.loreText.setText(arch.lore);
+    this.statsText.setText(arch.stats);
+    // ensure the selected card shows as selected
+    const card = this.cardObjects[arch.key];
+    card.bg.setFillStyle(0x111122).setStrokeStyle(2, arch.color);
+  }
 
-  buildSwatchRow(label, y, values, colors, onChange, groupKey) {
+  // ─── SWATCHES ────────────────────────────────────────────────────────────
+
+  buildSwatches() {
+    const { width, height } = this.scale;
+    const isMobile = width < 600;
+
+    // position below lore panel
+    const swatchStartY = isMobile ? height - 140 : height - 120;
+    const swatchSize = isMobile ? 32 : 28;
+
+    this.buildSwatchRow('skin', 'SKIN', swatchStartY,
+      ['light', 'medium', 'dark', 'deep'],
+      [0xe8c4a0, 0xb87840, 0x7a4820, 0x4a2810],
+      swatchSize
+    );
+
+    this.buildSwatchRow('hair', 'HAIR', swatchStartY + swatchSize + 14,
+      ['black', 'brown', 'auburn', 'silver'],
+      [0x1a1a1a, 0x4a2e1a, 0x8b3a1a, 0xc8c8c8],
+      swatchSize
+    );
+  }
+
+  buildSwatchRow(groupKey, label, y, values, colors, size) {
     const { width } = this.scale;
-    const swatchSize = 28;
     const gap = 10;
-    const totalW = values.length * (swatchSize + gap) - gap;
-    const startX = (width * 0.58 - totalW) / 2;
+    const totalW = values.length * (size + gap) - gap;
+    const startX = this.cx - totalW / 2;
 
-    this.add.text(startX, y - 18, label, {
-      fontFamily: 'monospace', fontSize: '11px', color: '#666677'
-    });
+    this.add.text(startX - 8, y - 2, label, {
+      fontFamily: 'monospace', fontSize: '10px', color: '#555566'
+    }).setOrigin(1, 0);
 
     this['_swatches_' + groupKey] = {};
 
     values.forEach((val, i) => {
-      const x = startX + i * (swatchSize + gap) + swatchSize / 2;
+      const x = startX + i * (size + gap) + size / 2;
       const isDefault = (groupKey === 'skin' && val === 'medium') ||
                         (groupKey === 'hair' && val === 'black');
 
-      const swatch = this.add.rectangle(x, y, swatchSize, swatchSize, colors[i])
+      const sw = this.add.rectangle(x, y + size / 2, size, size, colors[i])
         .setStrokeStyle(isDefault ? 2 : 1, isDefault ? 0xffffff : 0x333344)
         .setInteractive({ useHandCursor: true });
 
-      swatch.on('pointerup', () => {
-        // deselect all in group
-        Object.values(this['_swatches_' + groupKey]).forEach(s => {
-          s.setStrokeStyle(1, 0x333344);
-        });
-        swatch.setStrokeStyle(2, 0xffffff);
-        onChange(val);
+      sw.on('pointerup', () => {
+        Object.values(this['_swatches_' + groupKey]).forEach(s => s.setStrokeStyle(1, 0x333344));
+        sw.setStrokeStyle(2, 0xffffff);
+        this.selected[groupKey === 'skin' ? 'skin' : 'hair'] = val;
       });
 
-      this['_swatches_' + groupKey][val] = swatch;
+      this['_swatches_' + groupKey][val] = sw;
     });
   }
 
-  // ─── PREVIEW ─────────────────────────────────────────────────────────────
+  // ─── CONFIRM ROW ─────────────────────────────────────────────────────────
 
-  refreshPreview() {
-    const { archetype, skin, hair } = this.selected;
-    const sourceKey = `${archetype}_pre_e1_idle_0`;
+  buildConfirmRow() {
+    const { width, height } = this.scale;
+    const isMobile = width < 600;
+    const btnY = height - 28;
+    const btnH = 44;
+    const btnW = isMobile ? (width - 48) / 2 : 200;
 
-    if (!this.textures.exists(sourceKey)) {
-      // no texture loaded yet - show colored placeholder
-      if (this.previewSprite) this.previewSprite.destroy();
-      const colors = { lck: 0xd4a017, atk: 0xb32a1f, def: 0x2a4a7a, spd: 0x2a7a4a };
-      this.previewSprite = this.add.rectangle(
-        this.previewBg.x, this.previewBg.y, 80, 160, colors[archetype] || 0x444466
-      );
-      return;
-    }
+    // test battle button
+    const testX = this.cx - btnW / 2 - 6;
+    const testBg = this.add.rectangle(testX, btnY, btnW, btnH, 0x222233)
+      .setStrokeStyle(1, 0x444455).setInteractive({ useHandCursor: true });
+    this.add.text(testX, btnY, 'TEST BATTLE', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#888899'
+    }).setOrigin(0.5);
+    testBg.on('pointerup', () => this.launchTestBattle());
 
-    const targetKey = `${archetype}_pre_e1_idle_0_${skin}_${hair}`;
-    const usedKey = PaletteSwap.swapPalette(this, sourceKey, targetKey, skin, hair);
-
-    if (this.previewSprite) this.previewSprite.destroy();
-    this.previewSprite = this.add.image(
-      this.previewBg.x, this.previewBg.y, usedKey
-    ).setDisplaySize(140, 280).setOrigin(0.5);
+    // confirm button
+    const confirmX = this.cx + btnW / 2 + 6;
+    const confirmBg = this.add.rectangle(confirmX, btnY, btnW, btnH, 0xb32a1f)
+      .setInteractive({ useHandCursor: true });
+    this.add.text(confirmX, btnY, 'ENTER ALIWORLD', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ebe2d2', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    confirmBg.on('pointerover', () => confirmBg.setFillStyle(0x8a1f15));
+    confirmBg.on('pointerout',  () => confirmBg.setFillStyle(0xb32a1f));
+    confirmBg.on('pointerup',   () => this.confirm());
   }
 
-  // ─── CONFIRM ─────────────────────────────────────────────────────────────
+  // ─── TEST BATTLE ─────────────────────────────────────────────────────────
 
-  async confirm() {
+  launchTestBattle() {
     const { archetype, skin, hair } = this.selected;
-
-    // save to registry immediately
-    const playerState = this.registry.get('playerState') || {};
-    playerState.archetype = archetype;
-    playerState.skin_tone = skin;
-    playerState.hair_color = hair;
-    playerState.outerwear_state = 'pre_e1';
-
-    // set base stats per archetype
     const statBuilds = {
       lck: { hp: 25, maxHp: 25, atk: 4, def: 4, spd: 4, lck: 9 },
       atk: { hp: 28, maxHp: 28, atk: 9, def: 3, spd: 4, lck: 4 },
       def: { hp: 40, maxHp: 40, atk: 4, def: 9, spd: 3, lck: 4 },
       spd: { hp: 28, maxHp: 28, atk: 5, def: 4, spd: 9, lck: 4 },
     };
-    Object.assign(playerState, statBuilds[archetype]);
-    playerState.moves = ['STRIKE', 'SLIP', 'WHISPER', 'HOLD'];
-    playerState.accessories = [];
+    const playerState = Object.assign(
+      { moves: ['STRIKE', 'SLIP', 'WHISPER', 'HOLD'], accessories: [] },
+      statBuilds[archetype]
+    );
+    playerState.archetype = archetype;
+
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('CombatScene', {
+        enemy: {
+          key: 'test_dummy',
+          name: 'Training Dummy',
+          hp: 30, maxHp: 30,
+          atk: 4, def: 4, spd: 4, lck: 3,
+          moves: ['STRIKE', 'HOLD', 'SLIP'],
+          telegraph: {
+            STRIKE: 'winding up',
+            HOLD:   'bracing',
+            SLIP:   'stepping in'
+          }
+        },
+        playerState,
+        returnScene: 'CharacterCreationScene',
+        isTestBattle: true
+      });
+    });
+  }
+
+  // ─── CONFIRM ─────────────────────────────────────────────────────────────
+
+  async confirm() {
+    const { archetype, skin, hair } = this.selected;
+    const statBuilds = {
+      lck: { hp: 25, maxHp: 25, atk: 4, def: 4, spd: 4, lck: 9 },
+      atk: { hp: 28, maxHp: 28, atk: 9, def: 3, spd: 4, lck: 4 },
+      def: { hp: 40, maxHp: 40, atk: 4, def: 9, spd: 3, lck: 4 },
+      spd: { hp: 28, maxHp: 28, atk: 5, def: 4, spd: 9, lck: 4 },
+    };
+
+    const playerState = Object.assign(
+      { moves: ['STRIKE', 'SLIP', 'WHISPER', 'HOLD'], accessories: [] },
+      statBuilds[archetype]
+    );
+    playerState.archetype      = archetype;
+    playerState.skin_tone      = skin;
+    playerState.hair_color     = hair;
+    playerState.outerwear_state = 'pre_e1';
 
     this.registry.set('playerState', playerState);
-    this.registry.set('avatarConfig', { archetype, skin_tone: skin, hair_color: hair, outerwear_state: 'pre_e1' });
+    this.registry.set('avatarConfig', {
+      archetype, skin_tone: skin, hair_color: hair, outerwear_state: 'pre_e1'
+    });
 
-    // save to supabase (best-effort, don't block on failure)
     try {
       const supabase = window.aliworldSupabase;
       const userId = window.aliworldGame && window.aliworldGame.userId;
       if (supabase && userId) {
         await supabase.from('aw_users').update({
-          archetype,
-          skin_tone: skin,
-          hair_color: hair,
-          outerwear_state: 'pre_e1'
+          archetype, skin_tone: skin, hair_color: hair, outerwear_state: 'pre_e1'
         }).eq('user_id', userId);
       }
     } catch (e) {
-      console.warn('[CharacterCreation] supabase save failed (non-blocking):', e);
+      console.warn('[CharacterCreation] save failed (non-blocking):', e);
     }
 
-    // advance to HomeScene
     this.cameras.main.fadeOut(600, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('HomeScene');
