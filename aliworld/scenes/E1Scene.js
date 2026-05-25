@@ -78,6 +78,10 @@ class E1Scene extends Phaser.Scene {
       case 'cafe_beat':     return this.startCafeBeat();
       case 'mark_fight':    return this.startMarkFight();
       case 'obsidian_beat': return this.startObsidianBeat();
+      case 'complete':      
+        this.registry.set('e1Progress', null);
+        this.scene.start('HomeScene');
+        return;
       default:              return this.startIntro();
     }
   }

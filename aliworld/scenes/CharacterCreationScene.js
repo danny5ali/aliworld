@@ -97,23 +97,23 @@ class CharacterCreationScene extends Phaser.Scene {
       this.portraitImages[arch.key] = img;
     });
 
-    // label + name (below portrait)
-    this.labelText = this.add.text(this.cx, cardTop + cardH * 0.78, '', {
-      fontFamily:'monospace', fontSize:'28px', fontStyle:'bold', color:'#ffffff'
+    // label + name + lore - positioned absolutely so they don't push into swatches
+    this.labelText = this.add.text(this.cx, height - 330, '', {
+      fontFamily:'monospace', fontSize:'24px', fontStyle:'bold', color:'#ffffff'
     }).setOrigin(0.5);
 
-    this.nameText = this.add.text(this.cx, cardTop + cardH * 0.85, '', {
-      fontFamily:'monospace', fontSize:'13px', color:'#888899'
+    this.nameText = this.add.text(this.cx, height - 305, '', {
+      fontFamily:'monospace', fontSize:'12px', color:'#888899'
     }).setOrigin(0.5);
 
-    // lore (below name)
-    this.loreText = this.add.text(this.cx, cardTop + cardH * 0.92, '', {
+    this.loreText = this.add.text(this.cx, height - 280, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#7a7060',
       align:'center', wordWrap:{ width: width - 60 }
     }).setOrigin(0.5);
 
-    // stats (below lore)
-    this.statsText = this.add.text(this.cx, cardTop + cardH * 1.02, '', {
+    // stats - position relative to bottom of safe area, NOT lore
+    // swatches start at height - 196, so stats must be above that with breathing room
+    this.statsText = this.add.text(this.cx, height - 250, '', {
       fontFamily:'monospace', fontSize:'10px', color:'#444455', align:'center'
     }).setOrigin(0.5);
   }

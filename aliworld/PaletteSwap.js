@@ -1,36 +1,33 @@
 // aliworld/PaletteSwap.js
-// runtime palette swap utility for skin tone + hair color
-// applied once per character load, cached as a new phaser texture
+// runtime palette swap. matches the actual gemini-rendered skin/hair colors.
 
 (function () {
 
-  // skin tone palettes
-  // each entry maps source colors (from the medium/default archetype art)
-  // to target colors for that skin tone
-  // source colors sampled from the actual archetype sheets
+  // source colors (from real ATK portrait)
+  // skin: tight cluster around #d2935d
+  // hair: pure black to near-black #000000 - #2c2c2c
+  // anything matching these gets replaced
 
   const SKIN_PALETTES = {
-    medium: null, // default, no swap needed
+    medium: null, // source is already medium
 
     light: [
-      { from: [180, 120, 70],  to: [220, 175, 130] },  // base skin
-      { from: [155, 95,  50],  to: [195, 150, 105] },  // shadow
-      { from: [200, 145, 95],  to: [235, 195, 160] },  // highlight
-      { from: [140, 80,  40],  to: [180, 130,  90] },  // deep shadow
+      // source skin → lighter
+      { fromHex: '#d2935d', to: [232, 184, 140] },
+      { fromHex: '#c08550', to: [220, 170, 128] },
+      { fromHex: '#a87245', to: [200, 152, 116] },
     ],
 
     dark: [
-      { from: [180, 120, 70],  to: [130,  80,  40] },
-      { from: [155, 95,  50],  to: [105,  60,  25] },
-      { from: [200, 145, 95],  to: [155, 100,  60] },
-      { from: [140, 80,  40],  to: [ 90,  50,  20] },
+      { fromHex: '#d2935d', to: [148,  88,  48] },
+      { fromHex: '#c08550', to: [135,  80,  42] },
+      { fromHex: '#a87245', to: [115,  66,  34] },
     ],
 
     deep: [
-      { from: [180, 120, 70],  to: [ 90,  55,  25] },
-      { from: [155, 95,  50],  to: [ 70,  40,  15] },
-      { from: [200, 145, 95],  to: [110,  70,  35] },
-      { from: [140, 80,  40],  to: [ 55,  30,  10] },
+      { fromHex: '#d2935d', to: [ 92,  55,  25] },
+      { fromHex: '#c08550', to: [ 80,  46,  20] },
+      { fromHex: '#a87245', to: [ 65,  38,  15] },
     ],
   };
 
@@ -38,49 +35,75 @@
     black: null, // default
 
     brown: [
-      { from: [25,  20,  20],  to: [ 80,  45,  20] },
-      { from: [15,  12,  12],  to: [ 60,  30,  10] },
-      { from: [40,  35,  35],  to: [105,  65,  35] },
+      { fromHex: '#000000', to: [ 70,  40,  18] },
+      { fromHex: '#1a1a1a', to: [ 85,  52,  25] },
+      { fromHex: '#2a2a2a', to: [100,  62,  32] },
     ],
 
     auburn: [
-      { from: [25,  20,  20],  to: [100,  35,  15] },
-      { from: [15,  12,  12],  to: [ 75,  22,   8] },
-      { from: [40,  35,  35],  to: [130,  55,  28] },
+      { fromHex: '#000000', to: [105,  35,  15] },
+      { fromHex: '#1a1a1a', to: [125,  48,  22] },
+      { fromHex: '#2a2a2a', to: [145,  60,  30] },
     ],
 
     silver: [
-      { from: [25,  20,  20],  to: [160, 160, 165] },
-      { from: [15,  12,  12],  to: [120, 120, 125] },
-      { from: [40,  35,  35],  to: [195, 195, 200] },
+      { fromHex: '#000000', to: [140, 140, 145] },
+      { fromHex: '#1a1a1a', to: [165, 165, 170] },
+      { fromHex: '#2a2a2a', to: [190, 190, 195] },
     ],
   };
 
-  // tolerance for color matching (per-channel)
-  const TOLERANCE = 18;
+  // generous tolerance - skin colors cluster tight, hair is near-black
+  const SKIN_TOLERANCE = 28;
+  const HAIR_TOLERANCE = 22;
 
-  function colorDistance(a, b) {
-    return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+  function hexToRgb(hex) {
+    hex = hex.replace('#', '');
+    return [parseInt(hex.slice(0,2), 16), parseInt(hex.slice(2,4), 16), parseInt(hex.slice(4,6), 16)];
   }
 
-  function applyPaletteToCanvas(canvas, palette) {
+  function colorDistance(a, b) {
+    const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+    return Math.sqrt(dr*dr + dg*dg + db*db);
+  }
+
+  function expandPalette(palette) {
+    // precompute RGB versions of fromHex
+    return palette.map(swap => ({
+      from: hexToRgb(swap.fromHex),
+      to: swap.to
+    }));
+  }
+
+  function applyPaletteToCanvas(canvas, palette, tolerance) {
     if (!palette) return canvas;
+    const expanded = expandPalette(palette);
     const ctx = canvas.getContext('2d');
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
     for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] < 10) continue; // skip transparent
-
+      if (data[i + 3] < 10) continue;
       const r = data[i], g = data[i + 1], b = data[i + 2];
 
-      for (const swap of palette) {
-        if (colorDistance([r, g, b], swap.from) <= TOLERANCE) {
-          data[i]     = swap.to[0];
-          data[i + 1] = swap.to[1];
-          data[i + 2] = swap.to[2];
-          break;
+      // find closest match in palette
+      let bestMatch = null;
+      let bestDist = tolerance;
+      for (const swap of expanded) {
+        const dist = colorDistance([r, g, b], swap.from);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestMatch = swap;
         }
+      }
+
+      if (bestMatch) {
+        // scale the target color by how close the original was to the source
+        // this preserves shading within the tolerance band
+        const t = 1 - (bestDist / tolerance);
+        data[i]     = Math.round(bestMatch.to[0] * t + r * (1 - t));
+        data[i + 1] = Math.round(bestMatch.to[1] * t + g * (1 - t));
+        data[i + 2] = Math.round(bestMatch.to[2] * t + b * (1 - t));
       }
     }
 
@@ -88,23 +111,11 @@
     return canvas;
   }
 
-  // main entry point
-  // scene: phaser scene (for texture manager)
-  // sourceKey: already-loaded phaser texture key
-  // targetKey: new texture key to register
-  // skinTone: 'light' | 'medium' | 'dark' | 'deep'
-  // hairColor: 'black' | 'brown' | 'auburn' | 'silver'
   function swapPalette(scene, sourceKey, targetKey, skinTone, hairColor) {
-    // if no swap needed, just alias the key
-    if (skinTone === 'medium' && hairColor === 'black') {
-      // already have the source key, just use it directly
-      return sourceKey;
-    }
-
-    // if already cached, return it
+    if (skinTone === 'medium' && hairColor === 'black') return sourceKey;
     if (scene.textures.exists(targetKey)) return targetKey;
+    if (!scene.textures.exists(sourceKey)) return sourceKey;
 
-    // get the source texture as a canvas
     const frame = scene.textures.get(sourceKey).getSourceImage();
 
     const offscreen = document.createElement('canvas');
@@ -113,38 +124,12 @@
     const ctx = offscreen.getContext('2d');
     ctx.drawImage(frame, 0, 0);
 
-    // apply skin then hair
-    const skinPalette = SKIN_PALETTES[skinTone] || null;
-    const hairPalette = HAIR_PALETTES[hairColor] || null;
+    applyPaletteToCanvas(offscreen, SKIN_PALETTES[skinTone] || null, SKIN_TOLERANCE);
+    applyPaletteToCanvas(offscreen, HAIR_PALETTES[hairColor] || null, HAIR_TOLERANCE);
 
-    applyPaletteToCanvas(offscreen, skinPalette);
-    applyPaletteToCanvas(offscreen, hairPalette);
-
-    // register as new phaser texture
     scene.textures.addCanvas(targetKey, offscreen);
     return targetKey;
   }
 
-  // convenience: swap all frames for an archetype + state combo
-  // returns an object mapping frame names to swapped texture keys
-  function swapArchetype(scene, archetype, state, skinTone, hairColor) {
-    const frames = [
-      'idle_0', 'idle_1', 'idle_2', 'idle_alt',
-      'walk_0', 'walk_1', 'walk_2',
-      'atk_stance_0', 'atk_stance_1', 'atk_lunge', 'atk_lunge_2',
-      'portrait'
-    ];
-
-    const result = {};
-    for (const frame of frames) {
-      const sourceKey = `${archetype}_${state}_${frame}`;
-      const targetKey = `${archetype}_${state}_${frame}_${skinTone}_${hairColor}`;
-      if (scene.textures.exists(sourceKey)) {
-        result[frame] = swapPalette(scene, sourceKey, targetKey, skinTone, hairColor);
-      }
-    }
-    return result;
-  }
-
-  window.PaletteSwap = { swapPalette, swapArchetype };
+  window.PaletteSwap = { swapPalette };
 })();

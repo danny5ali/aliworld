@@ -60,9 +60,25 @@ class CombatScene extends Phaser.Scene {
       backgroundColor: '#1a1a22', padding: { x: 8, y: 4 }
     }).setOrigin(0.5).setVisible(false);
 
-    // player on bottom-left
-    this.playerSprite = this.add.rectangle(width * 0.25, height * 0.7, 64, 96, 0x4444cc)
-      .setStrokeStyle(2, 0xffffff);
+    // player sprite - use archetype + palette swap if available
+    const config = this.registry.get('avatarConfig') || {};
+    const archetype = this.player.archetype || config.archetype || 'atk';
+    const state     = config.outerwear_state || 'pre_e1';
+    const skin      = config.skin_tone || 'medium';
+    const hair      = config.hair_color || 'black';
+    const srcKey = `${archetype}_${state}_atk_stance_0`;
+    const fallbackKey = `${archetype}_${state}_idle_0`;
+    const useSrc = this.textures.exists(srcKey) ? srcKey :
+                   this.textures.exists(fallbackKey) ? fallbackKey : null;
+    if (useSrc && window.PaletteSwap) {
+      const tgt = `${useSrc}_${skin}_${hair}`;
+      const finalKey = PaletteSwap.swapPalette(this, useSrc, tgt, skin, hair);
+      this.playerSprite = this.add.image(width * 0.25, height * 0.7, finalKey)
+        .setOrigin(0.5, 1).setScale(0.5);
+    } else {
+      this.playerSprite = this.add.rectangle(width * 0.25, height * 0.7, 60, 90, 0x4444cc)
+        .setStrokeStyle(2, 0xffffff);
+    }
 
     // player hp bar
     this.playerHpBg = this.add.rectangle(width * 0.25, height * 0.7 + 60, 160, 10, 0x333333)
@@ -408,9 +424,14 @@ class CombatScene extends Phaser.Scene {
 
   flashSprite(side, color) {
     const sprite = side === 'player' ? this.playerSprite : this.enemySprite;
-    const original = sprite.fillColor;
-    sprite.setFillStyle(color);
-    this.time.delayedCall(180, () => sprite.setFillStyle(original));
+    if (sprite.setFillStyle) {
+      const original = sprite.fillColor;
+      sprite.setFillStyle(color);
+      this.time.delayedCall(180, () => sprite.setFillStyle(original));
+    } else if (sprite.setTint) {
+      sprite.setTint(color);
+      this.time.delayedCall(180, () => sprite.clearTint());
+    }
   }
 
   shakeSprite(side) {
@@ -455,7 +476,9 @@ class CombatScene extends Phaser.Scene {
     this.log(msg);
 
     this.time.delayedCall(1400, () => {
-      this.scene.start(this.returnScene, { combatResult: result, enemyKey: this.enemy.key });
+      // for test battles, restore the playerState before returning so character creation isn't borked
+      const data = { combatResult: result, enemyKey: this.enemy.key };
+      this.scene.start(this.returnScene, data);
     });
   }
 
