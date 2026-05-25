@@ -1,4 +1,5 @@
 // aliworld/game.js
+// portrait orientation, mobile-first like BLNT
 
 let _phaserGame = null;
 
@@ -10,11 +11,14 @@ window.aliworldBootGame = function(userId, handle, email) {
   const config = {
     type: Phaser.AUTO,
     parent: 'game-container',
-    width: 960,
-    height: 600,
-    backgroundColor: '#000000',
+    width: 540,
+    height: 960,
+    backgroundColor: '#07070f',
     pixelArt: true,
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
     scene: [
       BootScene,
       CharacterCreationScene,

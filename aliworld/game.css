@@ -1,79 +1,68 @@
-/* ============================================
-   ALIWORLD — game canvas + overlay UI
-   ============================================ */
+/* aliworld/game.css - portrait orientation, dark theme, no green flash on load */
 
 #game-screen {
-  width: 100%;
-  height: 100vh;
-  height: 100dvh;
-  padding: 0;
-  margin: 0;
-  position: fixed;
-  inset: 0;
-  background: var(--ink);
-}
-
-#game-screen.visible {
+  background: #07070f;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 #game-container {
+  background: #07070f;
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  max-width: 540px;
+  max-height: 960px;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
 }
 
 #game-container canvas {
-  display: block;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-  /* prevent canvas from being draggable */
-  -webkit-user-drag: none;
-  user-select: none;
+  background: #07070f !important;
+  max-width: 100%;
+  max-height: 100%;
 }
 
-/* overlay UI floats above the canvas */
 #game-overlay {
-  position: absolute;
-  top: 0;
-  right: 0;
-  padding: 0.75rem;
+  position: fixed;
+  top: 12px;
+  right: 12px;
   z-index: 10;
-  pointer-events: none;
-}
-
-#game-overlay > * {
-  pointer-events: auto;
 }
 
 .overlay-btn {
-  background: rgba(20, 17, 15, 0.85);
-  color: var(--cream-dim);
-  border: 1px solid var(--border);
-  font-family: inherit;
-  font-size: 1.125rem;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 50%;
+  background: rgba(20, 20, 30, 0.85);
+  color: #888899;
+  border: 1px solid #333344;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: monospace;
   cursor: pointer;
-  transition: all 0.15s ease;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  font-size: 16px;
 }
 
-.overlay-btn:hover {
-  color: var(--red);
-  border-color: var(--red);
+.overlay-btn:hover { background: rgba(40, 40, 60, 0.85); }
+
+#back-link {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  color: #555566;
+  text-decoration: none;
+  font-family: monospace;
+  font-size: 11px;
+  z-index: 10;
+  background: rgba(20, 20, 30, 0.85);
+  padding: 6px 10px;
+  border-radius: 4px;
 }
 
-/* on the game screen, hide the back-link (it's not relevant during gameplay) */
-#game-screen.visible ~ #back-link {
-  display: none !important;
+#back-link.visible { display: block; }
+#back-link:not(.visible) { display: none; }
+
+body {
+  margin: 0;
+  background: #07070f;
 }
