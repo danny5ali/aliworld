@@ -41,9 +41,26 @@ class CombatScene extends Phaser.Scene {
     // background plate (placeholder, swap with location bg per encounter later)
     this.add.rectangle(0, 0, width, height, 0x0a0a0f).setOrigin(0, 0);
 
-    // enemy on top
-    this.enemySprite = this.add.rectangle(this.cx, height * 0.32, 96, 128, 0x8b2828)
-      .setStrokeStyle(2, 0xffffff);
+    // enemy on top - placeholder until npc art lands
+    this.enemySprite = this.add.rectangle(this.cx, height * 0.32, 96, 128, 0x4a1a1a)
+      .setStrokeStyle(2, 0xb32a1f);
+    // add a stylized inner shape so it doesn't look like just a red box
+    const inner = this.add.rectangle(this.cx, height * 0.32, 72, 100, 0x2a0e0e).setStrokeStyle(1, 0x661c1c);
+    // small triangle hint inside
+    const tg = this.add.graphics();
+    tg.lineStyle(2, 0x882020, 0.7);
+    const tcx = this.cx, tcy = height * 0.32, ts = 16;
+    tg.beginPath();
+    tg.moveTo(tcx, tcy - ts);
+    tg.lineTo(tcx + ts * 0.866, tcy + ts * 0.5);
+    tg.lineTo(tcx - ts * 0.866, tcy + ts * 0.5);
+    tg.closePath();
+    tg.strokePath();
+    tg.lineBetween(tcx - ts * 0.4, tcy + ts * 0.5, tcx + ts * 0.4, tcy + ts * 0.5);
+    // breathing pulse
+    this.tweens.add({
+      targets: inner, alpha: { from: 0.85, to: 1 }, duration: 1400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'
+    });
     this.enemyNameText = this.add.text(this.cx, height * 0.32 - 90, this.enemy.name, {
       fontFamily: 'monospace', fontSize: '20px', color: '#ffffff'
     }).setOrigin(0.5);
@@ -260,6 +277,8 @@ class CombatScene extends Phaser.Scene {
     // apply damage if attack
     if (move.power > 0) {
       let dmg = this.calcDamage(attacker, defender, move);
+      const wasCrit = this._wasCrit;
+      this._wasCrit = false;
       // brace cuts incoming damage
       if (defenderStatus.brace > 0) {
         dmg = Math.floor(dmg * 0.5);
@@ -269,6 +288,9 @@ class CombatScene extends Phaser.Scene {
       this.log(`${dmg} damage.`);
       this.flashSprite(defenderKey, 0xff4444);
       this.shakeSprite(defenderKey);
+      this.spawnDamageNumber(defenderKey, dmg, wasCrit);
+      this.hitPause(wasCrit ? 120 : 60);
+      if (wasCrit) this.screenFlash(0xffffff, 0.4);
     }
 
     // apply status effects
@@ -310,10 +332,13 @@ class CombatScene extends Phaser.Scene {
   calcDamage(attacker, defender, move) {
     if (!move.power) return 0;
     const base = move.power + attacker.atk - Math.floor(defender.def * 0.5);
-    const variance = 0.85 + Math.random() * 0.3; // 85% to 115%
+    const variance = 0.85 + Math.random() * 0.3;
     const critRoll = Math.random() < (0.05 + attacker.lck * 0.005);
-    const crit = critRoll ? 1.5 : 1.0;
-    if (critRoll) this.log('critical.');
+    const crit = critRoll ? 1.6 : 1.0;
+    if (critRoll) {
+      this.log('critical.');
+      this._wasCrit = true;
+    }
     return Math.max(1, Math.floor(base * variance * crit));
   }
 
@@ -479,6 +504,52 @@ class CombatScene extends Phaser.Scene {
       // for test battles, restore the playerState before returning so character creation isn't borked
       const data = { combatResult: result, enemyKey: this.enemy.key };
       this.scene.start(this.returnScene, data);
+    });
+  }
+
+  // ---------- polish effects ----------
+
+  spawnDamageNumber(side, dmg, isCrit) {
+    const sprite = side === 'player' ? this.playerSprite : this.enemySprite;
+    if (!sprite) return;
+    const x = sprite.x;
+    const y = sprite.y - (sprite.displayHeight || sprite.height || 80) * 0.6;
+    const color = isCrit ? '#ffee44' : '#ff6666';
+    const size = isCrit ? '28px' : '22px';
+    const text = this.add.text(x, y, String(dmg), {
+      fontFamily: 'monospace', fontSize: size, color, fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(500);
+
+    this.tweens.add({
+      targets: text,
+      y: y - 50,
+      alpha: { from: 1, to: 0 },
+      duration: 900,
+      ease: 'Cubic.easeOut',
+      onComplete: () => text.destroy()
+    });
+  }
+
+  hitPause(ms) {
+    // briefly pause all tweens and time events to create impact feel
+    this.tweens.pauseAll();
+    this.time.paused = true;
+    setTimeout(() => {
+      this.tweens.resumeAll();
+      this.time.paused = false;
+    }, ms);
+  }
+
+  screenFlash(color, alpha) {
+    const { width, height } = this.scale;
+    const flash = this.add.rectangle(0, 0, width, height, color, alpha || 0.3)
+      .setOrigin(0, 0).setDepth(1000);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 180,
+      onComplete: () => flash.destroy()
     });
   }
 

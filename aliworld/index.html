@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#07070f">
   <title>ALIWORLD</title>
   <meta name="description" content="ALIWORLD. a place that remembers.">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
@@ -12,7 +12,6 @@
 </head>
 <body>
   <main>
-    <!-- ============= LOADING STATE ============= -->
     <section id="loading-screen" class="screen visible">
       <div class="sigil" aria-hidden="true">
         <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -20,10 +19,9 @@
           <path d="M14 32 L26 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
       </div>
-      <p class="loading-text">loading…</p>
+      <p class="loading-text">loading...</p>
     </section>
 
-    <!-- ============= AUTH SCREEN (signed out) ============= -->
     <section id="auth-screen" class="screen">
       <div class="sigil" aria-hidden="true">
         <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -48,17 +46,21 @@
           <span>password</span>
           <input id="password-input" type="password" autocomplete="current-password" required minlength="6" placeholder="at least 6 characters">
         </label>
+
+        <div id="tc-container">
+          <input type="checkbox" id="tc-checkbox">
+          <label for="tc-checkbox">i agree to the <a id="tc-link" href="#">terms of service</a></label>
+        </div>
+
         <button type="submit" id="auth-submit">create account</button>
       </form>
 
       <p id="auth-message" class="message" aria-live="polite"></p>
     </section>
 
-    <!-- ============= GAME CONTAINER (signed in) ============= -->
     <section id="game-screen" class="screen">
       <div id="game-container"></div>
 
-      <!-- UI overlay floats above the Phaser canvas -->
       <div id="game-overlay">
         <button id="logout-btn" class="overlay-btn" title="log out">↺</button>
       </div>
@@ -67,31 +69,27 @@
     <a href="/" id="back-link">← back to choose</a>
   </main>
 
-  <!-- supabase client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="supabase-client.js"></script>
-  <script src="DialogueManager.js"></script>
+  <script src="SpriteNormalizer.js"></script>
   <script src="PaletteSwap.js"></script>
+  <script src="DialogueManager.js"></script>
 
-  <!-- phaser engine -->
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 
-  <!-- auth (must load before game so it can detect signed-in state) -->
   <script src="auth.js"></script>
 
-  <!-- game scenes -->
   <script src="scenes/BootScene.js"></script>
   <script src="scenes/IntroScene.js"></script>
+  <script src="scenes/CharacterCreationScene.js"></script>
   <script src="scenes/NameScene.js"></script>
   <script src="scenes/OutroIntroScene.js"></script>
-  <script src="scenes/CharacterCreationScene.js"></script>
   <script src="scenes/HomeScene.js"></script>
   <script src="scenes/OverworldScene.js"></script>
   <script src="scenes/CombatScene.js"></script>
   <script src="scenes/AccessoryScene.js"></script>
   <script src="scenes/E1Scene.js"></script>
 
-  <!-- main game initialization -->
   <script src="game.js"></script>
 </body>
 </html>

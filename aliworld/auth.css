@@ -77,3 +77,77 @@ h1 { margin: 0; font-size: 26px; letter-spacing: 4px; color: #ebe2d2; }
 
 /* never show back-link when game is visible */
 #game-screen.visible ~ #back-link { display: none !important; }
+
+/* T&C checkbox row */
+#tc-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #555566;
+}
+#tc-checkbox {
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: #b32a1f;
+}
+#tc-link {
+  color: #b32a1f;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* T&C modal */
+#tc-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tc-modal-bg {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+}
+.tc-modal-box {
+  position: relative;
+  background: #111122;
+  border: 2px solid #b32a1f;
+  border-radius: 4px;
+  max-width: 480px;
+  width: calc(100% - 32px);
+  max-height: 80vh;
+  padding: 24px;
+  overflow-y: auto;
+}
+.tc-modal-box h3 {
+  color: #ebe2d2;
+  margin: 0 0 16px;
+  font-size: 18px;
+  letter-spacing: 2px;
+}
+.tc-modal-content {
+  color: #aaaabb;
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: monospace;
+}
+.tc-modal-content p {
+  margin: 0 0 12px;
+}
+.tc-modal-content strong { color: #ebe2d2; }
+.tc-modal-close {
+  margin-top: 16px;
+  background: #b32a1f;
+  color: #ebe2d2;
+  border: none;
+  padding: 10px 24px;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: lowercase;
+}
+.tc-modal-close:hover { background: #8a1f15; }

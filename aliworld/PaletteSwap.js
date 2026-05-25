@@ -1,29 +1,20 @@
 // aliworld/PaletteSwap.js
-// runtime palette swap. matches the actual gemini-rendered skin/hair colors.
+// chains with SpriteNormalizer: clean bg + center → palette swap → cache
 
 (function () {
 
-  // source colors (from real ATK portrait)
-  // skin: tight cluster around #d2935d
-  // hair: pure black to near-black #000000 - #2c2c2c
-  // anything matching these gets replaced
-
   const SKIN_PALETTES = {
-    medium: null, // source is already medium
-
+    medium: null,
     light: [
-      // source skin → lighter
       { fromHex: '#d2935d', to: [232, 184, 140] },
       { fromHex: '#c08550', to: [220, 170, 128] },
       { fromHex: '#a87245', to: [200, 152, 116] },
     ],
-
     dark: [
       { fromHex: '#d2935d', to: [148,  88,  48] },
       { fromHex: '#c08550', to: [135,  80,  42] },
       { fromHex: '#a87245', to: [115,  66,  34] },
     ],
-
     deep: [
       { fromHex: '#d2935d', to: [ 92,  55,  25] },
       { fromHex: '#c08550', to: [ 80,  46,  20] },
@@ -32,20 +23,17 @@
   };
 
   const HAIR_PALETTES = {
-    black: null, // default
-
+    black: null,
     brown: [
       { fromHex: '#000000', to: [ 70,  40,  18] },
       { fromHex: '#1a1a1a', to: [ 85,  52,  25] },
       { fromHex: '#2a2a2a', to: [100,  62,  32] },
     ],
-
     auburn: [
       { fromHex: '#000000', to: [105,  35,  15] },
       { fromHex: '#1a1a1a', to: [125,  48,  22] },
       { fromHex: '#2a2a2a', to: [145,  60,  30] },
     ],
-
     silver: [
       { fromHex: '#000000', to: [140, 140, 145] },
       { fromHex: '#1a1a1a', to: [165, 165, 170] },
@@ -53,7 +41,6 @@
     ],
   };
 
-  // generous tolerance - skin colors cluster tight, hair is near-black
   const SKIN_TOLERANCE = 28;
   const HAIR_TOLERANCE = 22;
 
@@ -68,11 +55,7 @@
   }
 
   function expandPalette(palette) {
-    // precompute RGB versions of fromHex
-    return palette.map(swap => ({
-      from: hexToRgb(swap.fromHex),
-      to: swap.to
-    }));
+    return palette.map(swap => ({ from: hexToRgb(swap.fromHex), to: swap.to }));
   }
 
   function applyPaletteToCanvas(canvas, palette, tolerance) {
@@ -86,7 +69,6 @@
       if (data[i + 3] < 10) continue;
       const r = data[i], g = data[i + 1], b = data[i + 2];
 
-      // find closest match in palette
       let bestMatch = null;
       let bestDist = tolerance;
       for (const swap of expanded) {
@@ -98,8 +80,6 @@
       }
 
       if (bestMatch) {
-        // scale the target color by how close the original was to the source
-        // this preserves shading within the tolerance band
         const t = 1 - (bestDist / tolerance);
         data[i]     = Math.round(bestMatch.to[0] * t + r * (1 - t));
         data[i + 1] = Math.round(bestMatch.to[1] * t + g * (1 - t));
@@ -111,18 +91,30 @@
     return canvas;
   }
 
+  // primary entry: normalizes + palette-swaps in one call
+  // input: raw loaded texture key (e.g. 'atk_pre_e1_idle_0')
+  // output: clean, normalized, palette-swapped texture key
   function swapPalette(scene, sourceKey, targetKey, skinTone, hairColor) {
-    if (skinTone === 'medium' && hairColor === 'black') return sourceKey;
+    // step 1: ensure the sprite is normalized (bg removed, content centered)
+    let normalizedKey = sourceKey;
+    if (window.SpriteNormalizer) {
+      normalizedKey = SpriteNormalizer.cleanAndNormalize(scene, sourceKey, `${sourceKey}_clean`);
+    }
+
+    // step 2: if no palette swap needed, return the normalized key
+    if (skinTone === 'medium' && hairColor === 'black') return normalizedKey;
+
+    // step 3: check cache
     if (scene.textures.exists(targetKey)) return targetKey;
-    if (!scene.textures.exists(sourceKey)) return sourceKey;
+    if (!scene.textures.exists(normalizedKey)) return normalizedKey;
 
-    const frame = scene.textures.get(sourceKey).getSourceImage();
-
+    // step 4: apply palette swap
+    const source = scene.textures.get(normalizedKey).getSourceImage();
     const offscreen = document.createElement('canvas');
-    offscreen.width = frame.width;
-    offscreen.height = frame.height;
+    offscreen.width = source.width;
+    offscreen.height = source.height;
     const ctx = offscreen.getContext('2d');
-    ctx.drawImage(frame, 0, 0);
+    ctx.drawImage(source, 0, 0);
 
     applyPaletteToCanvas(offscreen, SKIN_PALETTES[skinTone] || null, SKIN_TOLERANCE);
     applyPaletteToCanvas(offscreen, HAIR_PALETTES[hairColor] || null, HAIR_TOLERANCE);
