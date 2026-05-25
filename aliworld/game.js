@@ -1,5 +1,5 @@
 // aliworld/game.js
-// portrait orientation, mobile-first like BLNT
+// portrait orientation, mobile-first
 
 let _phaserGame = null;
 
@@ -21,10 +21,13 @@ window.aliworldBootGame = function(userId, handle, email) {
     },
     scene: [
       BootScene,
+      IntroScene,
       CharacterCreationScene,
+      NameScene,
+      AccessoryScene,
+      OutroIntroScene,
       HomeScene,
       OverworldScene,
-      AccessoryScene,
       CombatScene,
       E1Scene
     ]

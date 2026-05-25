@@ -310,7 +310,7 @@ class CharacterCreationScene extends Phaser.Scene {
 
     this.cameras.main.fadeOut(600, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start('HomeScene');
+      this.scene.start('NameScene');
     });
   }
 }

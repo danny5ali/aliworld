@@ -9,7 +9,8 @@ class AccessoryScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.returnScene = data && data.returnScene || 'OverworldScene';
+    this.returnScene = (data && data.returnScene) || 'OverworldScene';
+    this.isFirstTime = (data && data.isFirstTime) || false;
   }
 
   create() {
@@ -24,11 +25,16 @@ class AccessoryScene extends Phaser.Scene {
 
     this.add.rectangle(0, 0, width, height, 0x07070f).setOrigin(0, 0);
 
-    this.add.text(this.cx, 24, 'LOADOUT', {
+    const title = this.isFirstTime ? 'PICK YOUR STARTERS.' : 'LOADOUT';
+    const subtitle = this.isFirstTime
+      ? '3 things to take with you. tap to equip.'
+      : '3 slots. equip what fits your build.';
+
+    this.add.text(this.cx, 24, title, {
       fontFamily: 'monospace', fontSize: '18px', color: '#ebe2d2', fontStyle: 'bold'
     }).setOrigin(0.5);
 
-    this.add.text(this.cx, 46, '3 slots. equip what fits your build.', {
+    this.add.text(this.cx, 46, subtitle, {
       fontFamily: 'monospace', fontSize: '11px', color: '#444455'
     }).setOrigin(0.5);
 
@@ -261,7 +267,8 @@ class AccessoryScene extends Phaser.Scene {
 
     const saveBg = this.add.rectangle(this.cx + 80, btnY, 140, 40, 0xb32a1f)
       .setInteractive({ useHandCursor: true });
-    this.add.text(this.cx + 80, btnY, 'SAVE LOADOUT', {
+    const saveLabel = this.isFirstTime ? 'BEGIN' : 'SAVE LOADOUT';
+    this.add.text(this.cx + 80, btnY, saveLabel, {
       fontFamily: 'monospace', fontSize: '12px', color: '#ebe2d2', fontStyle: 'bold'
     }).setOrigin(0.5);
     saveBg.on('pointerover', () => saveBg.setFillStyle(0x8a1f15));

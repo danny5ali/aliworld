@@ -1,4 +1,5 @@
 // aliworld/scenes/BootScene.js
+// loads assets, routes new players to IntroScene, returning players to HomeScene
 
 (function () {
   const ARCHETYPES = ['atk', 'def', 'lck', 'spd'];
@@ -13,12 +14,11 @@
 
     preload() {
       const { width, height } = this.scale;
-      const barBg = this.add.rectangle(width/2, height/2, 300, 8, 0x222233);
-      const bar   = this.add.rectangle(width/2-150, height/2, 0, 8, 0xb32a1f).setOrigin(0, 0.5);
-      const label = this.add.text(width/2, height/2+24, 'loading...', { fontFamily:'monospace', fontSize:'12px', color:'#666677' }).setOrigin(0.5);
+      const barBg = this.add.rectangle(width/2, height/2, 280, 6, 0x222233);
+      const bar   = this.add.rectangle(width/2-140, height/2, 0, 6, 0xb32a1f).setOrigin(0, 0.5);
+      const label = this.add.text(width/2, height/2+20, 'loading', { fontFamily:'monospace', fontSize:'11px', color:'#444455' }).setOrigin(0.5);
 
-      this.load.on('progress', v => { bar.width = 300 * v; });
-      this.load.on('fileprogress', f => { label.setText(f.key); });
+      this.load.on('progress', v => { bar.width = 280 * v; });
 
       // archetype frames
       const base = 'assets/sprites/characters';
@@ -51,10 +51,11 @@
 
       if (supabase && userId) {
         supabase.from('aw_users')
-          .select('archetype, skin_tone, hair_color, outerwear_state')
+          .select('archetype, skin_tone, hair_color, outerwear_state, handle')
           .eq('user_id', userId).single()
           .then(({ data }) => {
             if (data && data.archetype) {
+              // returning player - skip intro
               this.registry.set('avatarConfig', {
                 archetype: data.archetype,
                 skin_tone: data.skin_tone || 'medium',
@@ -76,14 +77,20 @@
               ps.hair_color      = data.hair_color || 'black';
               ps.outerwear_state = data.outerwear_state || 'pre_e1';
               this.registry.set('playerState', ps);
+
+              if (data.handle && window.aliworldGame) {
+                window.aliworldGame.userHandle = data.handle;
+              }
+
               this.scene.start('HomeScene');
             } else {
-              this.scene.start('CharacterCreationScene');
+              // new player - full intro
+              this.scene.start('IntroScene');
             }
           })
-          .catch(() => this.scene.start('CharacterCreationScene'));
+          .catch(() => this.scene.start('IntroScene'));
       } else {
-        this.scene.start('CharacterCreationScene');
+        this.scene.start('IntroScene');
       }
     }
   }
