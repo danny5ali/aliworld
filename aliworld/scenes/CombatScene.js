@@ -18,8 +18,9 @@ class CombatScene extends Phaser.Scene {
 
   init(data) {
     this.enemy = data.enemy || this.getTestEnemy();
-    this.player = data.playerState || this.getTestPlayer();
+    this.player = data.playerState ? this.computeEffectiveStats(data.playerState) : this.getTestPlayer();
     this.returnScene = data.returnScene || 'OverworldScene';
+    this.isTestBattle = data.isTestBattle || false;
 
     // runtime combat state
     this.playerStatus = { shake: 0, bleed: 0, stun: 0, brace: 0 };
@@ -504,14 +505,74 @@ class CombatScene extends Phaser.Scene {
     const playerState = this.registry.get('playerState');
     if (playerState) {
       playerState.hp = this.player.hp;
-      // clear any status effects so they don't carry over (fresh stance per encounter)
       this.registry.set('playerState', playerState);
     }
 
+    // handle drops on win
+    let droppedItem = null;
+    if (result === 'win' && !this.isTestBattle) {
+      droppedItem = this.rollDrop();
+      if (droppedItem) this.addToInventory(droppedItem);
+    }
+
     this.time.delayedCall(1400, () => {
-      const data = { combatResult: result, enemyKey: this.enemy.key };
+      const data = {
+        combatResult: result,
+        enemyKey: this.enemy.key,
+        droppedItem
+      };
       this.scene.start(this.returnScene, data);
     });
+  }
+
+  computeEffectiveStats(baseState) {
+    // clone, then apply equipped accessory bonuses
+    const s = Object.assign({}, baseState);
+    const equipped = baseState.accessories || [];
+
+    // start with base hp/maxHp - we keep current hp but adjust maxHp from bonuses
+    let bonusHp = 0, bonusAtk = 0, bonusDef = 0, bonusSpd = 0, bonusLck = 0;
+    for (const item of equipped) {
+      if (!item || !item.bonuses) continue;
+      bonusHp  += item.bonuses.hp  || 0;
+      bonusAtk += item.bonuses.atk || 0;
+      bonusDef += item.bonuses.def || 0;
+      bonusSpd += item.bonuses.spd || 0;
+      bonusLck += item.bonuses.lck || 0;
+    }
+
+    s.maxHp = Math.max(1, (baseState.maxHp || 0) + bonusHp);
+    // clamp current hp to new max (in case accessories changed since last fight)
+    s.hp = Math.min(baseState.hp || s.maxHp, s.maxHp);
+    s.atk = Math.max(0, (baseState.atk || 0) + bonusAtk);
+    s.def = Math.max(0, (baseState.def || 0) + bonusDef);
+    s.spd = Math.max(0, (baseState.spd || 0) + bonusSpd);
+    s.lck = Math.max(0, (baseState.lck || 0) + bonusLck);
+
+    return s;
+  }
+
+  rollDrop() {
+    if (!this.enemy) return null;
+    // bosses always drop
+    if (this.enemy.isBoss && window.BOSS_DROPS) {
+      return window.BOSS_DROPS[this.enemy.key] || null;
+    }
+    // minor enemies: 30% chance
+    if (window.MINOR_DROPS && window.MINOR_DROPS[this.enemy.key]) {
+      if (Math.random() < 0.3) return window.MINOR_DROPS[this.enemy.key];
+    }
+    return null;
+  }
+
+  addToInventory(item) {
+    const ps = this.registry.get('playerState') || {};
+    if (!ps.inventory) ps.inventory = [];
+    // don't duplicate
+    if (!ps.inventory.some(i => i.id === item.id)) {
+      ps.inventory.push({ ...item });
+    }
+    this.registry.set('playerState', ps);
   }
 
   // ---------- polish effects ----------

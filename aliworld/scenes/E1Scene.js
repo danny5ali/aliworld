@@ -10,6 +10,7 @@ class E1Scene extends Phaser.Scene {
   init(data) {
     this.combatResult  = data && data.combatResult;
     this.defeatedEnemy = data && data.enemyKey;
+    this.droppedItem   = data && data.droppedItem;
   }
 
   create() {
@@ -60,6 +61,13 @@ class E1Scene extends Phaser.Scene {
             { speaker: null, text: 'you don\'t remember seeing it before.' },
           ]
         };
+      }
+      // append drop notification if there was one
+      if (payoff && this.droppedItem) {
+        payoff.lines.push(
+          { speaker: null, text: `you found: ${this.droppedItem.name}.` },
+          { speaker: null, text: this.droppedItem.desc || '' }
+        );
       }
       this._pendingPayoff = payoff;
     }
@@ -150,6 +158,26 @@ class E1Scene extends Phaser.Scene {
     } else {
       return this.add.rectangle(x, useY, 36, 70, 0x4444cc).setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1);
     }
+  }
+
+  addMenuButton() {
+    const { width } = this.scale;
+    const btnX = width - 38;
+    const btnY = 28;
+    const bg = this.add.circle(btnX, btnY, 18, 0x1a1a2a)
+      .setStrokeStyle(1, 0x444455)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(50);
+    const icon = this.add.text(btnX, btnY, '⋮', {
+      fontFamily:'monospace', fontSize:'20px', color:'#888899'
+    }).setOrigin(0.5).setDepth(51);
+    bg.on('pointerup', () => {
+      const currentProgress = this.registry.get('e1Progress');
+      this.fadeOut(300, () => {
+        this.scene.start('AccessoryScene', { returnScene: 'E1Scene' });
+      });
+    });
+    return { bg, icon };
   }
 
   addNPC(x, y, color, label) {
@@ -246,6 +274,7 @@ class E1Scene extends Phaser.Scene {
   startWalkerBeat() {
     this.fadeIn(600);
     this.drawBg('bg_field');
+    this.addMenuButton();
     const { width, height } = this.scale;
     
     this.addPlayerSprite(width * 0.25, 0);
@@ -278,6 +307,7 @@ class E1Scene extends Phaser.Scene {
   startCafeBeat() {
     this.fadeIn(800);
     this.drawBg('bg_cafe');
+    this.addMenuButton();
     const { width, height } = this.scale;
     
     const player = this.addPlayerSprite(width * 0.2, 0);
