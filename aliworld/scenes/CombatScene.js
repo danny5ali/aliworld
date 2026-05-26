@@ -1,15 +1,20 @@
 // aliworld/scenes/CombatScene.js
+// radial-wheel combat with telegraphed enemy turns, damage numbers,
+// hit-pause, crit flash, status effects, real npc sprites.
 //
-// turn-based combat. radial wheel menu, 4 active moves visible.
-// enemies telegraph their next move before they use it.
-// hidden rng under the hood (player never sees numbers, just outcomes).
+// CALL SHAPE:
+//   this.scene.start('CombatScene', {
+//     npcId: 'mark' | 'skeptic' | 'walker' | 'training_dummy',
+//     returnScene: 'E1Scene' | 'HomeScene' | 'CharacterCreationScene' | etc,
+//     isTestBattle: true,                  // optional: skips drops + persistence
+//     playerStateOverride: { ... }         // optional: used for test battle preview
+//   });
 //
-// data flow:
-//   scene receives { enemy, playerState } via init()
-//   playerState = { hp, maxHp, atk, def, spd, lck, moves: [4 move keys], accessories: [...] }
-//   enemy = { key, name, hp, maxHp, atk, def, spd, lck, moves: [...], spritesheet }
+// returns to returnScene with init data:
+//   { combatResult: 'win' | 'lose', enemyKey: <npcId>, droppedItem: {...} | null }
 //
-// on win/lose, scene emits 'combatEnd' with result and returns to caller scene.
+// playerState lives on this.registry. effective stats are computed at fight start
+// by applying equipped accessory bonuses on top of the archetype base.
 
 class CombatScene extends Phaser.Scene {
   constructor() {
@@ -17,691 +22,393 @@ class CombatScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.enemy = data.enemy || this.getTestEnemy();
-    this.player = data.playerState ? this.computeEffectiveStats(data.playerState) : this.getTestPlayer();
-    this.returnScene = data.returnScene || 'OverworldScene';
-    this.isTestBattle = data.isTestBattle || false;
+    this.npcId = (data && data.npcId) || 'walker';
+    this.returnScene = (data && data.returnScene) || 'E1Scene';
+    this.isTestBattle = !!(data && data.isTestBattle);
+    this.playerStateOverride = (data && data.playerStateOverride) || null;
 
-    // runtime combat state
-    this.playerStatus = { shake: 0, bleed: 0, stun: 0, brace: 0 };
-    this.enemyStatus = { shake: 0, bleed: 0, stun: 0, brace: 0 };
-    this.turnCount = 0;
+    this.turn = 0;
+    this.playerTurn = true;
     this.busy = false;
-    this.enemyNextMove = null;
+
+    // npc data from registry
+    const npc = window.NPCRegistry && NPCRegistry.get(this.npcId);
+    if (!npc) {
+      console.error('[CombatScene] unknown npcId:', this.npcId);
+      this.npc = NPCRegistry.get('training_dummy');
+      this.npcId = 'training_dummy';
+    } else {
+      this.npc = npc;
+    }
+
+    this.enemyHP = this.npc.stats.hp;
+    this.enemyMaxHP = this.npc.stats.maxHp || this.npc.stats.hp;
+
+    // player state
+    const ps = this.playerStateOverride || this.registry.get('playerState') || {};
+    this._playerStateRef = ps;
+
+    this.playerArchetype = ps.archetype || 'atk';
+    this.skinTone = ps.skin_tone || 'medium';
+    this.hairColor = ps.hair_color || 'black';
+    this.outerwearState = ps.outerwear_state || 'pre_e1';
+
+    const eff = this.computeEffectiveStats(ps);
+    this.playerStats = eff;
+    this.playerHP = (ps.hp != null) ? ps.hp : eff.maxHp;
+    this.playerMaxHP = eff.maxHp;
   }
 
-  preload() {
-    // assumed already loaded by BootScene. safety only.
+  computeEffectiveStats(ps) {
+    // base from archetype
+    const ARCHETYPE_STATS = {
+      lck: { hp: 25, maxHp: 25, atk: 4, def: 4, spd: 4, lck: 9 },
+      atk: { hp: 28, maxHp: 28, atk: 9, def: 3, spd: 4, lck: 4 },
+      def: { hp: 40, maxHp: 40, atk: 4, def: 9, spd: 3, lck: 4 },
+      spd: { hp: 28, maxHp: 28, atk: 5, def: 4, spd: 9, lck: 4 }
+    };
+    const base = Object.assign({}, ARCHETYPE_STATS[ps.archetype || 'atk']);
+
+    // apply equipped accessory bonuses (items are objects with .bonuses)
+    const equipped = ps.accessories || [];
+    equipped.forEach(item => {
+      if (!item || !item.bonuses) return;
+      Object.keys(item.bonuses).forEach(k => {
+        const key = (k === 'hp') ? 'maxHp' : k;
+        base[key] = (base[key] || 0) + item.bonuses[k];
+        if (k === 'hp') base.hp = base.maxHp; // keep hp at maxHp during the bonus calc
+      });
+    });
+
+    // clamp minimums
+    Object.keys(base).forEach(k => { if (base[k] < 1) base[k] = 1; });
+    return base;
   }
 
   create() {
-    const { width, height } = this.scale;
-    this.cx = width / 2;
-    this.cy = height / 2;
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
 
-    // background plate (placeholder, swap with location bg per encounter later)
-    this.add.rectangle(0, 0, width, height, 0x0a0a0f).setOrigin(0, 0);
+    // backdrop
+    this.add.rectangle(0, 0, W, H, 0x0a0a0a).setOrigin(0, 0);
+    this.add.rectangle(0, H * 0.55, W, 2, 0x222222).setOrigin(0, 0);
 
-    // enemy on top - placeholder until npc art lands
-    this.enemySprite = this.add.rectangle(this.cx, height * 0.32, 96, 128, 0x4a1a1a)
-      .setStrokeStyle(2, 0xb32a1f);
-    // add a stylized inner shape so it doesn't look like just a red box
-    const inner = this.add.rectangle(this.cx, height * 0.32, 72, 100, 0x2a0e0e).setStrokeStyle(1, 0x661c1c);
-    // small triangle hint inside
-    const tg = this.add.graphics();
-    tg.lineStyle(2, 0x882020, 0.7);
-    const tcx = this.cx, tcy = height * 0.32, ts = 16;
-    tg.beginPath();
-    tg.moveTo(tcx, tcy - ts);
-    tg.lineTo(tcx + ts * 0.866, tcy + ts * 0.5);
-    tg.lineTo(tcx - ts * 0.866, tcy + ts * 0.5);
-    tg.closePath();
-    tg.strokePath();
-    tg.lineBetween(tcx - ts * 0.4, tcy + ts * 0.5, tcx + ts * 0.4, tcy + ts * 0.5);
-    // breathing pulse
-    this.tweens.add({
-      targets: inner, alpha: { from: 0.85, to: 1 }, duration: 1400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'
-    });
-    this.enemyNameText = this.add.text(this.cx, height * 0.32 - 90, this.enemy.name, {
-      fontFamily: 'monospace', fontSize: '20px', color: '#ffffff'
+    // ===== enemy sprite =====
+    this.enemyX = W / 2;
+    this.enemyY = H * 0.30;
+    this.placeEnemySprite();
+
+    // enemy name + hp bar
+    this.add.text(this.enemyX, this.enemyY - 130, this.npc.displayName, {
+      fontFamily: 'monospace', fontSize: '18px', color: '#f4e8c1'
     }).setOrigin(0.5);
 
-    // enemy hp bar
-    this.enemyHpBg = this.add.rectangle(this.cx, height * 0.32 - 70, 200, 8, 0x333333)
-      .setStrokeStyle(1, 0xffffff);
-    this.enemyHpFill = this.add.rectangle(this.cx - 100, height * 0.32 - 70, 200, 8, 0xff4444)
-      .setOrigin(0, 0.5);
+    this.enemyHPBarBg = this.add.rectangle(this.enemyX, this.enemyY - 105, 180, 8, 0x333333);
+    this.enemyHPBar = this.add.rectangle(this.enemyX - 90, this.enemyY - 105, 180, 8, 0xc44).setOrigin(0, 0.5);
 
-    // enemy telegraph banner (hidden until set)
-    this.telegraphText = this.add.text(this.cx, height * 0.32 + 80, '', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#ffcc66',
-      backgroundColor: '#1a1a22', padding: { x: 8, y: 4 }
-    }).setOrigin(0.5).setVisible(false);
+    // ===== player sprite =====
+    this.playerX = W / 2;
+    this.playerY = H * 0.72;
+    this.placePlayerSprite();
 
-    // player sprite - use archetype + palette swap if available
-    const config = this.registry.get('avatarConfig') || {};
-    const archetype = this.player.archetype || config.archetype || 'atk';
-    const state     = config.outerwear_state || 'pre_e1';
-    const skin      = config.skin_tone || 'medium';
-    const hair      = config.hair_color || 'black';
-    const srcKey = `${archetype}_${state}_atk_stance_0`;
-    const fallbackKey = `${archetype}_${state}_idle_0`;
-    const useSrc = this.textures.exists(srcKey) ? srcKey :
-                   this.textures.exists(fallbackKey) ? fallbackKey : null;
-    if (useSrc && window.PaletteSwap) {
-      const tgt = `${useSrc}_${skin}_${hair}`;
-      const finalKey = PaletteSwap.swapPalette(this, useSrc, tgt, skin, hair);
-      this.playerSprite = this.add.image(width * 0.25, height * 0.7, finalKey)
-        .setOrigin(0.5, 1).setScale(0.5);
-    } else {
-      this.playerSprite = this.add.rectangle(width * 0.25, height * 0.7, 60, 90, 0x4444cc)
-        .setStrokeStyle(2, 0xffffff);
-    }
-
-    // player hp bar
-    this.playerHpBg = this.add.rectangle(width * 0.25, height * 0.7 + 60, 160, 10, 0x333333)
-      .setStrokeStyle(1, 0xffffff);
-    this.playerHpFill = this.add.rectangle(width * 0.25 - 80, height * 0.7 + 60, 160, 10, 0x44ff44)
-      .setOrigin(0, 0.5);
-    this.playerHpText = this.add.text(width * 0.25, height * 0.7 + 78,
-      `${this.player.hp}/${this.player.maxHp}`, {
-      fontFamily: 'monospace', fontSize: '12px', color: '#ffffff'
+    this.add.text(this.playerX, this.playerY + 30, 'YOU', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#f4e8c1'
     }).setOrigin(0.5);
 
-    // combat log (bottom strip)
-    this.logText = this.add.text(20, height - 60, '', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#cccccc',
-      wordWrap: { width: width - 40 }
-    });
+    this.playerHPBarBg = this.add.rectangle(this.playerX, this.playerY + 50, 180, 8, 0x333333);
+    this.playerHPBar = this.add.rectangle(this.playerX - 90, this.playerY + 50, 180, 8, 0x4c4).setOrigin(0, 0.5);
 
-    // radial wheel for moves
-    this.buildRadialWheel();
+    this.playerHPText = this.add.text(this.playerX, this.playerY + 64, '', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#888'
+    }).setOrigin(0.5);
+    this.updateHPBars();
 
-    // status icons row (under player)
-    this.statusIconsContainer = this.add.container(width * 0.25, height * 0.7 + 95);
+    // ===== telegraph line =====
+    this.telegraphText = this.add.text(W / 2, H * 0.46, '', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#9a9a9a',
+      align: 'center', wordWrap: { width: W - 60 }
+    }).setOrigin(0.5);
 
-    // start with player turn (or determine by spd later)
-    this.startPlayerTurn();
+    // ===== radial wheel =====
+    this.createRadialWheel();
+
+    // first turn: show what enemy is about to do
+    this.showTelegraph();
+
+    this.cameras.main.fadeIn(300, 0, 0, 0);
   }
 
-  // ---------- radial wheel ----------
+  placeEnemySprite() {
+    const idleKey = window.NPCRegistry && NPCRegistry.getFrame(this, this.npcId, 'idle_1');
+    if (idleKey) {
+      this.enemySprite = this.add.image(this.enemyX, this.enemyY, idleKey).setOrigin(0.5, 0.5);
+      const targetH = this.cameras.main.height * 0.28;
+      this.enemySprite.setScale(targetH / this.enemySprite.height);
+    } else {
+      // fallback: rectangle. visible signal that art is missing.
+      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyY, 120, 180, 0x554433)
+        .setStrokeStyle(2, 0xffffff);
+      if (this.npcId !== 'training_dummy') {
+        console.warn('[combat] no sprite for', this.npcId);
+      }
+    }
+  }
 
-  buildRadialWheel() {
-    const { width, height } = this.scale;
-    const wheelCx = width * 0.75;
-    const wheelCy = height * 0.7;
-    const radius = 80;
+  placePlayerSprite() {
+    const archetype = this.playerArchetype;
+    const state = this.outerwearState;
+    const srcKey = `${archetype}_${state}_idle_0`;
 
-    this.wheelCenter = { x: wheelCx, y: wheelCy };
+    if (this.textures.exists(srcKey)) {
+      // run through palette swap if available
+      const usedKey = (window.PaletteSwap)
+        ? PaletteSwap.swapPalette(this, srcKey, `${srcKey}_${this.skinTone}_${this.hairColor}`, this.skinTone, this.hairColor)
+        : srcKey;
+      this.playerSprite = this.add.image(this.playerX, this.playerY, usedKey).setOrigin(0.5, 0.5);
+      const targetH = this.cameras.main.height * 0.30;
+      this.playerSprite.setScale(targetH / this.playerSprite.height);
+    } else {
+      this.playerSprite = this.add.rectangle(this.playerX, this.playerY, 100, 150, 0x446);
+    }
+  }
 
-    // center label
-    this.wheelLabel = this.add.text(wheelCx, wheelCy, 'choose', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#888888'
-    }).setOrigin(0.5);
+  createRadialWheel() {
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
+    const cx = W / 2;
+    const cy = H - 100;
+    const r = 70;
 
-    // 4 active moves, positioned at 12/3/6/9 o'clock
-    const positions = [
-      { angle: -Math.PI / 2, name: 'top' },
-      { angle: 0, name: 'right' },
-      { angle: Math.PI / 2, name: 'bottom' },
-      { angle: Math.PI, name: 'left' }
-    ];
+    const ps = this._playerStateRef;
+    const available = (ps && ps.moves) || ['STRIKE', 'SLIP', 'WHISPER', 'HOLD'];
+    const wheel = available.slice(0, 4);
+
+    const angles = [-90, 0, 90, 180];
+    const colors = { STRIKE: 0xc44, SLIP: 0x4c8, HOLD: 0x48c, WHISPER: 0xc8c, LOOP: 0x99c };
 
     this.moveButtons = [];
-    const activeMoves = this.player.moves.slice(0, 4);
-
-    activeMoves.forEach((moveKey, i) => {
-      const move = MOVES[moveKey];
-      if (!move) return;
-      const pos = positions[i];
-      const bx = wheelCx + Math.cos(pos.angle) * radius;
-      const by = wheelCy + Math.sin(pos.angle) * radius;
-
-      const bg = this.add.circle(bx, by, 32, 0x222233).setStrokeStyle(2, 0x666688);
-      const label = this.add.text(bx, by, move.name, {
-        fontFamily: 'monospace', fontSize: '11px', color: '#ffffff'
+    wheel.forEach((moveId, i) => {
+      const ang = angles[i];
+      const x = cx + Math.cos(ang * Math.PI / 180) * r;
+      const y = cy + Math.sin(ang * Math.PI / 180) * r;
+      const btn = this.add.circle(x, y, 28, colors[moveId] || 0x666).setInteractive({ useHandCursor: true });
+      const label = this.add.text(x, y, moveId, {
+        fontFamily: 'monospace', fontSize: '10px', color: '#fff'
       }).setOrigin(0.5);
+      btn.on('pointerdown', () => this.playerMove(moveId));
+      this.moveButtons.push({ btn, label });
+    });
 
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerover', () => {
-        if (this.busy) return;
-        bg.setFillStyle(0x444466);
-        this.wheelLabel.setText(move.name);
-      });
-      bg.on('pointerout', () => {
-        bg.setFillStyle(0x222233);
-        this.wheelLabel.setText('choose');
-      });
-      bg.on('pointerdown', () => this.onPlayerMove(moveKey));
+    this.add.circle(cx, cy, 4, 0x444);
+  }
 
-      this.moveButtons.push({ bg, label, moveKey });
+  showTelegraph() {
+    const move = NPCRegistry.chooseMove(this.npcId, this.turn);
+    const line = NPCRegistry.telegraphFor(this.npcId, move);
+    this._upcomingMove = move;
+    this.telegraphText.setText(line);
+  }
+
+  setWheelEnabled(on) {
+    this.moveButtons.forEach(({ btn }) => {
+      if (on) btn.setInteractive({ useHandCursor: true });
+      else btn.disableInteractive();
+      btn.setAlpha(on ? 1 : 0.4);
     });
   }
 
-  setWheelInteractive(enabled) {
-    this.moveButtons.forEach(b => {
-      if (enabled) b.bg.setInteractive({ useHandCursor: true });
-      else b.bg.disableInteractive();
-      b.bg.setAlpha(enabled ? 1 : 0.4);
-      b.label.setAlpha(enabled ? 1 : 0.4);
-    });
-  }
-
-  // ---------- turn flow ----------
-
-  startPlayerTurn() {
-    this.turnCount++;
-    this.busy = false;
-
-    // tick player status effects at top of player turn
-    this.tickStatus('player');
-    if (this.player.hp <= 0) return this.endCombat('lose');
-    if (this.enemy.hp <= 0) return this.endCombat('win');
-
-    // if stunned, skip turn
-    if (this.playerStatus.stun > 0) {
-      this.log('you are stunned. you can\'t move.');
-      this.playerStatus.stun--;
-      this.refreshStatusIcons();
-      this.time.delayedCall(900, () => this.startEnemyTurn());
-      return;
-    }
-
-    // pick enemy's next move now and telegraph it
-    this.enemyNextMove = this.pickEnemyMove();
-    this.showTelegraph(this.enemyNextMove);
-
-    this.setWheelInteractive(true);
-  }
-
-  onPlayerMove(moveKey) {
-    if (this.busy) return;
+  playerMove(moveId) {
+    if (this.busy || !this.playerTurn) return;
     this.busy = true;
-    this.setWheelInteractive(false);
+    this.setWheelEnabled(false);
 
-    const move = MOVES[moveKey];
-    this.log(`you use ${move.name}.`);
+    let dmg = this.playerStats.atk;
+    let crit = false;
+    if (moveId === 'STRIKE')  dmg = Math.floor(this.playerStats.atk * 1.2);
+    if (moveId === 'WHISPER') dmg = Math.floor(this.playerStats.atk * 0.6);
+    if (moveId === 'SLIP')    dmg = Math.floor(this.playerStats.atk * 0.8);
+    if (moveId === 'HOLD')    dmg = 0;
 
-    this.resolveMove(move, 'player', 'enemy', () => {
-      // check enemy death
-      if (this.enemy.hp <= 0) return this.endCombat('win');
-      // proceed to enemy turn
-      this.time.delayedCall(700, () => this.startEnemyTurn());
-    });
-  }
-
-  startEnemyTurn() {
-    this.busy = true;
-    this.hideTelegraph();
-
-    this.tickStatus('enemy');
-    if (this.enemy.hp <= 0) return this.endCombat('win');
-    if (this.player.hp <= 0) return this.endCombat('lose');
-
-    if (this.enemyStatus.stun > 0) {
-      this.log(`${this.enemy.name} is stunned.`);
-      this.enemyStatus.stun--;
-      this.refreshStatusIcons();
-      this.time.delayedCall(900, () => this.startPlayerTurn());
-      return;
+    // crit roll
+    if (Math.random() * 100 < this.playerStats.lck * 2) {
+      crit = true;
+      dmg = Math.floor(dmg * 1.6);
     }
 
-    const moveKey = this.enemyNextMove || this.pickEnemyMove();
-    const move = MOVES[moveKey];
-    this.log(`${this.enemy.name} uses ${move.name}.`);
+    // small variance
+    dmg = Math.max(0, dmg + Math.floor((Math.random() - 0.5) * 3));
 
-    this.resolveMove(move, 'enemy', 'player', () => {
-      if (this.player.hp <= 0) return this.endCombat('lose');
-      this.time.delayedCall(700, () => this.startPlayerTurn());
-    });
+    this.applyDamageToEnemy(dmg, crit, moveId);
   }
 
-  // ---------- move resolution ----------
-
-  resolveMove(move, attackerKey, defenderKey, onComplete) {
-    const attacker = this[attackerKey];
-    const defender = this[defenderKey];
-    const attackerStatus = this[attackerKey + 'Status'];
-    const defenderStatus = this[defenderKey + 'Status'];
-
-    // hit/miss roll. base 85%, modified by spd diff and lck.
-    const hitChance = this.calcHitChance(attacker, defender, move);
-    const roll = Math.random();
-    const hit = roll < hitChance;
-
-    if (!hit && move.type === 'attack') {
-      this.log(`it missed.`);
-      this.flashSprite(defenderKey, 0x888888);
-      return this.time.delayedCall(400, onComplete);
+  applyDamageToEnemy(dmg, crit, moveId) {
+    // swap to attack frame briefly (uses lunge frames)
+    const lungeKey = `${this.playerArchetype}_${this.outerwearState}_atk_lunge`;
+    if (this.textures.exists(lungeKey) && this.playerSprite.setTexture) {
+      const prev = this.playerSprite.texture.key;
+      this.playerSprite.setTexture(lungeKey);
+      this.time.delayedCall(180, () => {
+        if (this.playerSprite.active) this.playerSprite.setTexture(prev);
+      });
     }
 
-    // apply damage if attack
-    if (move.power > 0) {
-      let dmg = this.calcDamage(attacker, defender, move);
-      const wasCrit = this._wasCrit;
-      this._wasCrit = false;
-      // brace cuts incoming damage
-      if (defenderStatus.brace > 0) {
-        dmg = Math.floor(dmg * 0.5);
-        defenderStatus.brace--;
+    // brief flash on enemy
+    if (this.enemySprite.setAlpha) {
+      this.tweens.add({
+        targets: this.enemySprite,
+        alpha: { from: 0.3, to: 1 },
+        duration: 120
+      });
+    }
+
+    const pauseMs = crit ? 120 : 60;
+    this.time.delayedCall(pauseMs, () => {
+      this.enemyHP = Math.max(0, this.enemyHP - dmg);
+      this.updateHPBars();
+      this.spawnDamageNumber(this.enemyX, this.enemyY - 60, dmg, crit);
+
+      if (crit) this.cameras.main.flash(80, 255, 220, 200);
+
+      if (this.enemyHP <= 0) {
+        this.time.delayedCall(500, () => this.victory());
+      } else {
+        this.time.delayedCall(700, () => this.enemyTurn());
       }
-      defender.hp = Math.max(0, defender.hp - dmg);
-      this.log(`${dmg} damage.`);
-      this.flashSprite(defenderKey, 0xff4444);
-      this.shakeSprite(defenderKey);
-      this.spawnDamageNumber(defenderKey, dmg, wasCrit);
-      this.hitPause(wasCrit ? 120 : 60);
-      if (wasCrit) this.screenFlash(0xffffff, 0.4);
+    });
+  }
+
+  enemyTurn() {
+    this.playerTurn = false;
+    const move = this._upcomingMove || NPCRegistry.chooseMove(this.npcId, this.turn);
+
+    // attack stance
+    const stanceKey = NPCRegistry.getFrame(this, this.npcId, 'attack_stance');
+    if (stanceKey && this.enemySprite.setTexture) this.enemySprite.setTexture(stanceKey);
+
+    this.time.delayedCall(600, () => {
+      const actionKey = NPCRegistry.getFrame(this, this.npcId, 'attack_action');
+      if (actionKey && this.enemySprite.setTexture) this.enemySprite.setTexture(actionKey);
+
+      // damage calc
+      let dmg = this.npc.stats.atk;
+      if (move === 'STRIKE')  dmg = Math.floor(this.npc.stats.atk * 1.0);
+      if (move === 'SLIP')    dmg = Math.floor(this.npc.stats.atk * 0.8);
+      if (move === 'WHISPER') dmg = Math.floor(this.npc.stats.atk * 0.6);
+      if (move === 'HOLD')    dmg = 0;
+      if (move === 'LOOP')    dmg = Math.floor(this.npc.stats.atk * 1.3);
+      dmg = Math.max(0, dmg + Math.floor((Math.random() - 0.5) * 3));
+      const reduced = Math.max(1, dmg - Math.floor(this.playerStats.def / 3));
+
+      this.time.delayedCall(180, () => {
+        // back to idle
+        const idleKey = NPCRegistry.getFrame(this, this.npcId, 'idle_1');
+        if (idleKey && this.enemySprite.setTexture) this.enemySprite.setTexture(idleKey);
+
+        // player hit react (uses idle_2 as a stand-in flinch frame for now)
+        const reactKey = `${this.playerArchetype}_${this.outerwearState}_idle_2`;
+        if (this.textures.exists(reactKey) && this.playerSprite.setTexture) {
+          const prev = this.playerSprite.texture.key;
+          this.playerSprite.setTexture(reactKey);
+          this.time.delayedCall(220, () => {
+            if (this.playerSprite.active) this.playerSprite.setTexture(prev);
+          });
+        }
+
+        this.playerHP = Math.max(0, this.playerHP - reduced);
+        this.updateHPBars();
+        this.spawnDamageNumber(this.playerX, this.playerY - 40, reduced, false);
+
+        if (this.playerHP <= 0) {
+          this.time.delayedCall(500, () => this.defeat());
+        } else {
+          this.turn++;
+          this.playerTurn = true;
+          this.busy = false;
+          this.setWheelEnabled(true);
+          this.showTelegraph();
+        }
+      });
+    });
+  }
+
+  spawnDamageNumber(x, y, dmg, crit) {
+    const txt = this.add.text(x, y, String(dmg), {
+      fontFamily: 'monospace',
+      fontSize: crit ? '28px' : '20px',
+      color: crit ? '#ffd86b' : '#f4e8c1',
+      stroke: '#000', strokeThickness: 3
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: txt, y: y - 50, alpha: { from: 1, to: 0 }, duration: 800,
+      onComplete: () => txt.destroy()
+    });
+  }
+
+  updateHPBars() {
+    const eRatio = this.enemyMaxHP > 0 ? this.enemyHP / this.enemyMaxHP : 0;
+    this.enemyHPBar.scaleX = Math.max(0, eRatio);
+
+    const pRatio = this.playerMaxHP > 0 ? this.playerHP / this.playerMaxHP : 0;
+    this.playerHPBar.scaleX = Math.max(0, pRatio);
+
+    if (this.playerHPText) {
+      this.playerHPText.setText(`${this.playerHP} / ${this.playerMaxHP}`);
+    }
+  }
+
+  victory() {
+    // persist current HP on the playerState (E1Scene will then do 25% recovery on return)
+    if (!this.isTestBattle) {
+      const ps = this._playerStateRef;
+      ps.hp = this.playerHP;
+      ps.maxHp = this.playerMaxHP;
+      this.registry.set('playerState', ps);
     }
 
-    // apply status effects
-    if (move.applyStatus) {
-      for (const [status, chance] of Object.entries(move.applyStatus)) {
-        if (Math.random() < chance) {
-          // self-target for brace, opponent-target for the rest
-          const target = status === 'brace' ? attackerStatus : defenderStatus;
-          target[status] = (target[status] || 0) + (move.statusDuration || 2);
-          const who = (status === 'brace')
-            ? (attackerKey === 'player' ? 'you' : this.enemy.name)
-            : (defenderKey === 'player' ? 'you' : this.enemy.name);
-          this.log(`${who} ${this.statusVerb(status)}.`);
+    // drop roll: returns full item object so E1Scene payoff can read .name + .desc
+    let droppedItem = null;
+    if (!this.isTestBattle && this.npc.drops && Math.random() <= this.npc.dropChance) {
+      const dropId = this.npc.drops;
+      const lookup = (window.BOSS_DROPS && Object.values(window.BOSS_DROPS).find(i => i.id === dropId))
+                  || (window.MINOR_DROPS && Object.values(window.MINOR_DROPS).find(i => i.id === dropId))
+                  || (window.STARTER_ACCESSORIES && window.STARTER_ACCESSORIES.find(i => i.id === dropId));
+      if (lookup) {
+        const ps = this._playerStateRef;
+        ps.inventory = ps.inventory || [];
+        const already = ps.inventory.some(i => i.id === lookup.id);
+        if (!already) {
+          ps.inventory.push(Object.assign({}, lookup));
+          droppedItem = lookup;
         }
       }
     }
 
-    // self-heal moves
-    if (move.heal) {
-      const healed = Math.min(move.heal, attacker.maxHp - attacker.hp);
-      attacker.hp += healed;
-      this.log(`recovered ${healed} hp.`);
-      this.flashSprite(attackerKey, 0x44ff88);
-    }
-
-    this.refreshBars();
-    this.refreshStatusIcons();
-    this.time.delayedCall(500, onComplete);
-  }
-
-  calcHitChance(attacker, defender, move) {
-    if (move.type !== 'attack') return 1.0;
-    let base = move.accuracy ?? 0.85;
-    const spdDiff = (attacker.spd - defender.spd) * 0.02;
-    const lckBonus = attacker.lck * 0.005;
-    return Math.max(0.3, Math.min(0.98, base + spdDiff + lckBonus));
-  }
-
-  calcDamage(attacker, defender, move) {
-    if (!move.power) return 0;
-    const base = move.power + attacker.atk - Math.floor(defender.def * 0.5);
-    const variance = 0.85 + Math.random() * 0.3;
-    const critRoll = Math.random() < (0.05 + attacker.lck * 0.005);
-    const crit = critRoll ? 1.6 : 1.0;
-    if (critRoll) {
-      this.log('critical.');
-      this._wasCrit = true;
-    }
-    return Math.max(1, Math.floor(base * variance * crit));
-  }
-
-  // ---------- status effects ----------
-  // shake: spd debuff, reduces hit chance against this side
-  // bleed: ticks damage at top of side's turn
-  // stun: skip next turn
-  // brace: halves next incoming damage
-
-  tickStatus(side) {
-    const statusObj = this[side + 'Status'];
-    const entity = this[side];
-
-    if (statusObj.bleed > 0) {
-      const dmg = Math.max(1, Math.floor(entity.maxHp * 0.06));
-      entity.hp = Math.max(0, entity.hp - dmg);
-      const who = side === 'player' ? 'you bleed' : `${this.enemy.name} bleeds`;
-      this.log(`${who} for ${dmg}.`);
-      statusObj.bleed--;
-      this.flashSprite(side, 0xaa2222);
-    }
-    if (statusObj.shake > 0) statusObj.shake--;
-    // brace decrements on hit, not on tick
-    this.refreshBars();
-    this.refreshStatusIcons();
-  }
-
-  statusVerb(status) {
-    return {
-      shake: 'is shaken',
-      bleed: 'is bleeding',
-      stun: 'is stunned',
-      brace: 'braces'
-    }[status] || `is afflicted by ${status}`;
-  }
-
-  refreshStatusIcons() {
-    this.statusIconsContainer.removeAll(true);
-    const icons = Object.entries(this.playerStatus).filter(([, v]) => v > 0);
-    icons.forEach(([status, turns], i) => {
-      const color = {
-        shake: 0xffcc44, bleed: 0xff4444, stun: 0x8844ff, brace: 0x44ccff
-      }[status] || 0xffffff;
-      const x = i * 28 - (icons.length - 1) * 14;
-      const dot = this.add.circle(x, 0, 8, color);
-      const num = this.add.text(x, 0, String(turns), {
-        fontFamily: 'monospace', fontSize: '10px', color: '#000000'
-      }).setOrigin(0.5);
-      this.statusIconsContainer.add([dot, num]);
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start(this.returnScene, {
+        combatResult: 'win',
+        enemyKey: this.npcId,
+        droppedItem: droppedItem
+      });
     });
   }
 
-  // ---------- enemy ai ----------
-
-  pickEnemyMove() {
-    const moves = this.enemy.moves;
-    const hpRatio = this.enemy.hp / this.enemy.maxHp;
-
-    // walker ai: repeat the same move twice in a row before possibly switching
-    if (this.enemy.ai === 'repeat') {
-      if (this._lastEnemyMove && this._repeatUsed < 1) {
-        this._repeatUsed = (this._repeatUsed || 0) + 1;
-        return this._lastEnemyMove;
-      }
-      this._repeatUsed = 0;
-      const pick = moves[Math.floor(Math.random() * moves.length)];
-      this._lastEnemyMove = pick;
-      return pick;
+  defeat() {
+    if (!this.isTestBattle) {
+      const ps = this._playerStateRef;
+      ps.hp = ps.maxHp || this.playerMaxHP;
+      this.registry.set('playerState', ps);
     }
-
-    // low hp: try to heal
-    if (hpRatio < 0.3) {
-      const healMove = moves.find(k => MOVES[k] && MOVES[k].heal);
-      if (healMove && Math.random() < 0.6) return healMove;
-    }
-
-    // under pressure: try to brace
-    if (this.enemyStatus.bleed > 0 || this.enemyStatus.shake > 1) {
-      const braceMove = moves.find(k => MOVES[k] && MOVES[k].applyStatus && MOVES[k].applyStatus.brace);
-      if (braceMove && Math.random() < 0.4) return braceMove;
-    }
-
-    // otherwise random attack
-    const attacks = moves.filter(k => MOVES[k] && MOVES[k].type === 'attack');
-    if (attacks.length === 0) return moves[0];
-    return attacks[Math.floor(Math.random() * attacks.length)];
-  }
-
-  showTelegraph(moveKey) {
-    const move = MOVES[moveKey];
-    if (!move) return;
-    // enemy-specific telegraph overrides (e.g. mark's conversation lines)
-    const enemyTelegraph = this.enemy.telegraph && this.enemy.telegraph[moveKey];
-    const verb = enemyTelegraph || move.telegraph || `winding up ${move.name}`;
-    // boss conversation style: show as dialogue, not "is X..."
-    const isBoss = this.enemy.isBoss;
-    const line = isBoss
-      ? `"${verb}"`
-      : `${this.enemy.name} is ${verb}...`;
-    this.telegraphText.setText(line).setVisible(true);
-  }
-
-  hideTelegraph() {
-    this.telegraphText.setVisible(false);
-  }
-
-  // ---------- visual feedback ----------
-
-  flashSprite(side, color) {
-    const sprite = side === 'player' ? this.playerSprite : this.enemySprite;
-    if (sprite.setFillStyle) {
-      const original = sprite.fillColor;
-      sprite.setFillStyle(color);
-      this.time.delayedCall(180, () => sprite.setFillStyle(original));
-    } else if (sprite.setTint) {
-      sprite.setTint(color);
-      this.time.delayedCall(180, () => sprite.clearTint());
-    }
-  }
-
-  shakeSprite(side) {
-    const sprite = side === 'player' ? this.playerSprite : this.enemySprite;
-    const ox = sprite.x;
-    this.tweens.add({
-      targets: sprite,
-      x: ox + 6,
-      duration: 50,
-      yoyo: true,
-      repeat: 3,
-      onComplete: () => sprite.setX(ox)
+    this.cameras.main.fadeOut(400, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start(this.returnScene, {
+        combatResult: 'lose',
+        enemyKey: this.npcId,
+        droppedItem: null
+      });
     });
-  }
-
-  refreshBars() {
-    // enemy
-    const eRatio = this.enemy.hp / this.enemy.maxHp;
-    this.enemyHpFill.width = 200 * eRatio;
-    // player
-    const pRatio = this.player.hp / this.player.maxHp;
-    this.playerHpFill.width = 160 * pRatio;
-    this.playerHpText.setText(`${this.player.hp}/${this.player.maxHp}`);
-  }
-
-  // ---------- log ----------
-
-  log(msg) {
-    const existing = this.logText.text.split('\n');
-    existing.push(msg);
-    while (existing.length > 3) existing.shift();
-    this.logText.setText(existing.join('\n'));
-  }
-
-  // ---------- end states ----------
-
-  endCombat(result) {
-    this.busy = true;
-    this.setWheelInteractive(false);
-    this.hideTelegraph();
-    const msg = result === 'win' ? `${this.enemy.name} is broken.` : 'you are broken.';
-    this.log(msg);
-
-    // persist current player HP back to registry so it carries between fights
-    const playerState = this.registry.get('playerState');
-    if (playerState) {
-      playerState.hp = this.player.hp;
-      this.registry.set('playerState', playerState);
-    }
-
-    // handle drops on win
-    let droppedItem = null;
-    if (result === 'win' && !this.isTestBattle) {
-      droppedItem = this.rollDrop();
-      if (droppedItem) this.addToInventory(droppedItem);
-    }
-
-    this.time.delayedCall(1400, () => {
-      const data = {
-        combatResult: result,
-        enemyKey: this.enemy.key,
-        droppedItem
-      };
-      this.scene.start(this.returnScene, data);
-    });
-  }
-
-  computeEffectiveStats(baseState) {
-    // clone, then apply equipped accessory bonuses
-    const s = Object.assign({}, baseState);
-    const equipped = baseState.accessories || [];
-
-    // start with base hp/maxHp - we keep current hp but adjust maxHp from bonuses
-    let bonusHp = 0, bonusAtk = 0, bonusDef = 0, bonusSpd = 0, bonusLck = 0;
-    for (const item of equipped) {
-      if (!item || !item.bonuses) continue;
-      bonusHp  += item.bonuses.hp  || 0;
-      bonusAtk += item.bonuses.atk || 0;
-      bonusDef += item.bonuses.def || 0;
-      bonusSpd += item.bonuses.spd || 0;
-      bonusLck += item.bonuses.lck || 0;
-    }
-
-    s.maxHp = Math.max(1, (baseState.maxHp || 0) + bonusHp);
-    // clamp current hp to new max (in case accessories changed since last fight)
-    s.hp = Math.min(baseState.hp || s.maxHp, s.maxHp);
-    s.atk = Math.max(0, (baseState.atk || 0) + bonusAtk);
-    s.def = Math.max(0, (baseState.def || 0) + bonusDef);
-    s.spd = Math.max(0, (baseState.spd || 0) + bonusSpd);
-    s.lck = Math.max(0, (baseState.lck || 0) + bonusLck);
-
-    return s;
-  }
-
-  rollDrop() {
-    if (!this.enemy) return null;
-    // bosses always drop
-    if (this.enemy.isBoss && window.BOSS_DROPS) {
-      return window.BOSS_DROPS[this.enemy.key] || null;
-    }
-    // minor enemies: 30% chance
-    if (window.MINOR_DROPS && window.MINOR_DROPS[this.enemy.key]) {
-      if (Math.random() < 0.3) return window.MINOR_DROPS[this.enemy.key];
-    }
-    return null;
-  }
-
-  addToInventory(item) {
-    const ps = this.registry.get('playerState') || {};
-    if (!ps.inventory) ps.inventory = [];
-    // don't duplicate
-    if (!ps.inventory.some(i => i.id === item.id)) {
-      ps.inventory.push({ ...item });
-    }
-    this.registry.set('playerState', ps);
-  }
-
-  // ---------- polish effects ----------
-
-  spawnDamageNumber(side, dmg, isCrit) {
-    const sprite = side === 'player' ? this.playerSprite : this.enemySprite;
-    if (!sprite) return;
-    const x = sprite.x;
-    const y = sprite.y - (sprite.displayHeight || sprite.height || 80) * 0.6;
-    const color = isCrit ? '#ffee44' : '#ff6666';
-    const size = isCrit ? '28px' : '22px';
-    const text = this.add.text(x, y, String(dmg), {
-      fontFamily: 'monospace', fontSize: size, color, fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 3
-    }).setOrigin(0.5).setDepth(500);
-
-    this.tweens.add({
-      targets: text,
-      y: y - 50,
-      alpha: { from: 1, to: 0 },
-      duration: 900,
-      ease: 'Cubic.easeOut',
-      onComplete: () => text.destroy()
-    });
-  }
-
-  hitPause(ms) {
-    // briefly pause all tweens and time events to create impact feel
-    this.tweens.pauseAll();
-    this.time.paused = true;
-    setTimeout(() => {
-      this.tweens.resumeAll();
-      this.time.paused = false;
-    }, ms);
-  }
-
-  screenFlash(color, alpha) {
-    const { width, height } = this.scale;
-    const flash = this.add.rectangle(0, 0, width, height, color, alpha || 0.3)
-      .setOrigin(0, 0).setDepth(1000);
-    this.tweens.add({
-      targets: flash,
-      alpha: 0,
-      duration: 180,
-      onComplete: () => flash.destroy()
-    });
-  }
-
-  // ---------- test defaults ----------
-
-  getTestPlayer() {
-    return {
-      hp: 30, maxHp: 30,
-      atk: 5, def: 5, spd: 5, lck: 5,
-      moves: ['STRIKE', 'SLIP', 'WHISPER', 'HOLD'],
-      accessories: []
-    };
-  }
-
-  getTestEnemy() {
-    return {
-      key: 'mark',
-      name: 'Mark',
-      hp: 35, maxHp: 35,
-      atk: 5, def: 4, spd: 4, lck: 3,
-      moves: ['STRIKE', 'SLIP', 'HOLD']
-    };
   }
 }
 
-// ---------- moves table ----------
-// 9 total. 4 starters, 5 episode-earned.
-// type: 'attack' | 'support'
-// power: damage base (0 for non-damaging)
-// accuracy: 0-1 hit chance base (default 0.85)
-// applyStatus: { statusName: chance } e.g. { bleed: 0.4 }
-// statusDuration: turns the status lasts (default 2)
-// heal: flat hp restore
-// telegraph: short string shown when enemy queues this move
-
-const MOVES = {
-  // starters
-  STRIKE: {
-    name: 'STRIKE', type: 'attack', power: 6, accuracy: 0.9,
-    telegraph: 'cocking back'
-  },
-  SLIP: {
-    name: 'SLIP', type: 'attack', power: 3, accuracy: 0.95,
-    applyStatus: { shake: 0.5 }, statusDuration: 2,
-    telegraph: 'slipping in close'
-  },
-  WHISPER: {
-    name: 'WHISPER', type: 'attack', power: 4, accuracy: 0.85,
-    applyStatus: { stun: 0.25 }, statusDuration: 1,
-    telegraph: 'mouthing something'
-  },
-  HOLD: {
-    name: 'HOLD', type: 'support', power: 0, accuracy: 1.0,
-    applyStatus: { brace: 1.0 }, statusDuration: 2,
-    telegraph: 'bracing'
-  },
-
-  // episode-earned
-  LOOP: {
-    name: 'LOOP', type: 'attack', power: 5, accuracy: 0.8,
-    applyStatus: { bleed: 0.6 }, statusDuration: 3,
-    telegraph: 'looping back'
-  },
-  POSSESS: {
-    name: 'POSSESS', type: 'attack', power: 7, accuracy: 0.75,
-    applyStatus: { stun: 0.35 }, statusDuration: 1,
-    telegraph: 'reaching for you'
-  },
-  CONDUCT: {
-    name: 'CONDUCT', type: 'attack', power: 8, accuracy: 0.8,
-    applyStatus: { shake: 0.6 }, statusDuration: 2,
-    telegraph: 'raising a hand'
-  },
-  REPLICATE: {
-    name: 'REPLICATE', type: 'support', power: 0, accuracy: 1.0,
-    heal: 8,
-    telegraph: 'copying itself'
-  },
-  ECHO: {
-    name: 'ECHO', type: 'attack', power: 9, accuracy: 0.85,
-    applyStatus: { bleed: 0.3, shake: 0.3 }, statusDuration: 2,
-    telegraph: 'about to echo'
-  }
-};
-
 window.CombatScene = CombatScene;
-window.MOVES = MOVES;

@@ -1,13 +1,34 @@
 // aliworld/scenes/BootScene.js
 // loads assets, routes new players to IntroScene, returning players to HomeScene
+//
+// asset keys produced here:
+//   archetype frames: ${arch}_${state}_${frame}   e.g. 'atk_pre_e1_idle_0'
+//   backgrounds:      'bg_field' | 'bg_cafe' | 'bg_obsidian' | 'bg_steps'
+//   npc frames:       'npc_${id}_${frame}'        e.g. 'npc_mark_idle_1'
+//   accessory icons:  'acc_${item_id}'            e.g. 'acc_st_cube' | 'acc_bd_mark'
 
 (function () {
   const ARCHETYPES = ['atk', 'def', 'lck', 'spd'];
   const STATES = ['pre_e1', 'post_e1'];
   const FRAMES = ['idle_0','idle_1','idle_2','idle_alt','walk_0','walk_1','walk_2','atk_stance_0','atk_stance_1','atk_lunge','atk_lunge_2','portrait'];
   const FRAME_TO_FILE = { portrait:1, atk_lunge:2, idle_2:3, atk_stance_0:4, atk_stance_1:5, atk_lunge_2:6, walk_0:7, walk_1:8, walk_2:9, idle_0:10, idle_1:11, idle_alt:12 };
-  const FOLDER_MAP = { 'atk_pre_e1':'ATK','atk_post_e1':'ATK - MDNGHT','def_pre_e1':'DEF','def_post_e1':'DEF - MDNGHT','lck_pre_e1':'LCK','lck_post_e1':'LCK - MDNGHT','spd_pre_e1':'SPD','spd_post_e1':'SPD - MDNGHT' };
-  const ACCESSORY_IDS = ['hp_cube','hp_vial','hp_crate','hp_chain','hp_flask','hp_pack','atk_sword','atk_blade','atk_elixir','atk_dagger','atk_cube','atk_tome','def_cross','def_orb','def_gem','def_shield','def_relic','def_medal','lck_star','lck_beads','lck_eye','lck_coin','lck_sigil','lck_disc'];
+  const FOLDER_MAP = {
+    'atk_pre_e1':'ATK','atk_post_e1':'ATK - MDNGHT',
+    'def_pre_e1':'DEF','def_post_e1':'DEF - MDNGHT',
+    'lck_pre_e1':'LCK','lck_post_e1':'LCK - MDNGHT',
+    'spd_pre_e1':'SPD','spd_post_e1':'SPD - MDNGHT'
+  };
+
+  // real accessory ids, sourced from AccessoryScene's data tables.
+  // matches files at assets/icons/accessories/${id}.png
+  const ACCESSORY_IDS = [
+    // starters (5)
+    'st_cube','st_beads','st_blade','st_cross','st_laces',
+    // boss drops (5)
+    'bd_mark','bd_clerk','bd_choir','bd_fadiron','bd_mirror',
+    // minor enemy drops (2)
+    'md_balm','md_crystal'
+  ];
 
   class BootScene extends Phaser.Scene {
     constructor() { super('BootScene'); }
@@ -37,12 +58,23 @@
       this.load.image('bg_obsidian', 'assets/backgrounds/e1_obsidian.png');
       this.load.image('bg_steps',    'assets/backgrounds/e1_steps.png');
 
+      // npc sprite frames (registry-driven)
+      if (window.NPCRegistry) {
+        NPCRegistry.getAllIds().forEach(npcId => {
+          NPCRegistry.getAllFrameKeys(npcId).forEach(f => {
+            this.load.image(f.key, f.path);
+          });
+        });
+      } else {
+        console.warn('[BootScene] NPCRegistry missing. add it to index.html before BootScene.js');
+      }
+
       // accessory icons
       for (const id of ACCESSORY_IDS) {
         this.load.image(`acc_${id}`, `assets/icons/accessories/${id}.png`);
       }
 
-      this.load.on('loaderror', f => console.warn('[BootScene] missing:', f.key));
+      this.load.on('loaderror', f => console.warn('[BootScene] missing:', f.key, '->', f.src));
     }
 
     create() {

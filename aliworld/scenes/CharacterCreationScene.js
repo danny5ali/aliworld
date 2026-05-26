@@ -1,6 +1,6 @@
 // aliworld/scenes/CharacterCreationScene.js
 // portrait-mode, full-screen swipeable cards
-// one archetype at a time, hero portrait dominant
+// portrait re-renders with palette swap whenever skin/hair changes
 
 class CharacterCreationScene extends Phaser.Scene {
   constructor() {
@@ -23,10 +23,8 @@ class CharacterCreationScene extends Phaser.Scene {
       { key:'spd', label:'SPD', name:'the runner',  lore:'always moves first. hard to pin down.\nwins before the other side adjusts.', stats:'+9 SPD  +5 ATK  +4 LCK  +4 DEF  28 HP', color:0x2a8a4a, hex:'#44cc88' },
     ];
 
-    // dark background
     this.add.rectangle(0, 0, width, height, 0x07070f).setOrigin(0, 0);
 
-    // top header
     this.add.text(this.cx, 36, 'WHO ARE YOU.', {
       fontFamily:'monospace', fontSize:'18px', color:'#ebe2d2', fontStyle:'bold'
     }).setOrigin(0.5);
@@ -35,7 +33,6 @@ class CharacterCreationScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'11px', color:'#444455'
     }).setOrigin(0.5);
 
-    // page indicator dots
     this.dots = [];
     const dotY = 84;
     const dotGap = 16;
@@ -45,19 +42,10 @@ class CharacterCreationScene extends Phaser.Scene {
       this.dots.push(dot);
     });
 
-    // build card content (portrait + label + name + lore + stats)
     this.buildCard();
-
-    // arrows
     this.buildArrows();
-
-    // swatches
     this.buildSwatches();
-
-    // bottom buttons
     this.buildButtons();
-
-    // swipe input
     this.setupSwipe();
 
     this.refreshCard();
@@ -65,55 +53,31 @@ class CharacterCreationScene extends Phaser.Scene {
 
   buildCard() {
     const { width, height } = this.scale;
-    // card area: between header and swatches
     const cardTop = 110;
-    const cardBottom = height - 240;
+    const cardBottom = height - 280;       // pushed up to make room for swatch rows
     const cardH = cardBottom - cardTop;
 
-    // portrait section (top 60% of card)
-    this.portraitContainer = this.add.container(this.cx, cardTop + cardH * 0.36);
+    // portrait container - we re-render the image inside it on swatch changes
+    this.portraitX = this.cx;
+    this.portraitY = cardTop + cardH * 0.36;
+    this.portraitMaxH = cardH * 0.65;
+    this.currentPortraitImage = null;       // set in refreshPortrait()
 
-    // create one image per archetype, hide all but current
-    this.portraitImages = {};
-    this.archetypes.forEach(arch => {
-      const portraitKey = `${arch.key}_pre_e1_portrait`;
-      const idleKey = `${arch.key}_pre_e1_idle_0`;
-      const useKey = this.textures.exists(portraitKey) ? portraitKey :
-                     this.textures.exists(idleKey) ? idleKey : null;
-
-      let img;
-      if (useKey) {
-        img = this.add.image(0, 0, useKey).setOrigin(0.5);
-        // scale to fit, height roughly cardH * 0.65
-        const target = cardH * 0.65;
-        const scale = target / img.height;
-        img.setScale(scale);
-      } else {
-        // fallback colored block
-        img = this.add.rectangle(0, 0, 140, 240, arch.color, 0.3);
-      }
-      img.setVisible(false);
-      this.portraitContainer.add(img);
-      this.portraitImages[arch.key] = img;
-    });
-
-    // label + name + lore - positioned absolutely so they don't push into swatches
-    this.labelText = this.add.text(this.cx, height - 330, '', {
+    // text - positioned ABOVE swatches with breathing room
+    this.labelText = this.add.text(this.cx, height - 370, '', {
       fontFamily:'monospace', fontSize:'24px', fontStyle:'bold', color:'#ffffff'
     }).setOrigin(0.5);
 
-    this.nameText = this.add.text(this.cx, height - 305, '', {
+    this.nameText = this.add.text(this.cx, height - 345, '', {
       fontFamily:'monospace', fontSize:'12px', color:'#888899'
     }).setOrigin(0.5);
 
-    this.loreText = this.add.text(this.cx, height - 280, '', {
+    this.loreText = this.add.text(this.cx, height - 320, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#7a7060',
       align:'center', wordWrap:{ width: width - 60 }
     }).setOrigin(0.5);
 
-    // stats - position relative to bottom of safe area, NOT lore
-    // swatches start at height - 196, so stats must be above that with breathing room
-    this.statsText = this.add.text(this.cx, height - 250, '', {
+    this.statsText = this.add.text(this.cx, height - 285, '', {
       fontFamily:'monospace', fontSize:'10px', color:'#444455', align:'center'
     }).setOrigin(0.5);
   }
@@ -135,11 +99,21 @@ class CharacterCreationScene extends Phaser.Scene {
   }
 
   buildSwatches() {
-    const { width, height } = this.scale;
+    const { height } = this.scale;
     const swatchSize = 36;
     const gap = 12;
-    const skinY = height - 196;
-    const hairY = height - 144;
+
+    // place SKIN row, then HAIR row, with clear vertical separation
+    // SKIN_LABEL ... SKIN_SWATCHES (gap) HAIR_LABEL ... HAIR_SWATCHES
+    // each row takes ~36px swatch + 14px label + 4px label margin = 54px
+    // rows separated by 18px gap. total block ~126px tall.
+    // anchor block bottom at (height - 130) so buttons at (height-70) clear it.
+
+    const blockBottom = height - 130;
+    const rowH = swatchSize + 14 + 4;     // swatch + label + label margin
+    const rowGap = 18;
+    const hairY = blockBottom - swatchSize / 2;
+    const skinY = hairY - rowH - rowGap;
 
     this.buildSwatchRow('skin', 'SKIN', skinY,
       ['light','medium','dark','deep'],
@@ -154,7 +128,7 @@ class CharacterCreationScene extends Phaser.Scene {
     const totalW = values.length * (size + gap) - gap;
     const startX = this.cx - totalW / 2 + size / 2;
 
-    this.add.text(this.cx, y - size / 2 - 14, label, {
+    this.add.text(this.cx, y - size / 2 - 12, label, {
       fontFamily:'monospace', fontSize:'10px', color:'#666677'
     }).setOrigin(0.5);
 
@@ -173,6 +147,7 @@ class CharacterCreationScene extends Phaser.Scene {
         Object.values(this['_swatches_' + group]).forEach(s => s.setStrokeStyle(1, 0x333344));
         sw.setStrokeStyle(2, 0xffffff);
         this.selected[group] = val;
+        this.refreshPortrait();
       });
 
       this['_swatches_' + group][val] = sw;
@@ -181,8 +156,8 @@ class CharacterCreationScene extends Phaser.Scene {
 
   buildButtons() {
     const { width, height } = this.scale;
-    const btnY = height - 70;
-    const btnH = 48;
+    const btnY = height - 60;
+    const btnH = 44;
     const btnW = (width - 48) / 2;
 
     const testX = this.cx - btnW / 2 - 4;
@@ -224,26 +199,54 @@ class CharacterCreationScene extends Phaser.Scene {
     this.refreshCard();
   }
 
+  // re-render the portrait with current skin/hair palette swap applied.
+  // called on swipe AND on swatch tap.
+  refreshPortrait() {
+    const arch = this.archetypes[this.currentIndex];
+    const { skin, hair } = this.selected;
+
+    // destroy previous
+    if (this.currentPortraitImage) {
+      this.currentPortraitImage.destroy();
+      this.currentPortraitImage = null;
+    }
+
+    // pick the source frame: prefer portrait, fall back to idle_0
+    const portraitKey = `${arch.key}_pre_e1_portrait`;
+    const idleKey     = `${arch.key}_pre_e1_idle_0`;
+    const sourceKey   = this.textures.exists(portraitKey) ? portraitKey :
+                        this.textures.exists(idleKey)     ? idleKey : null;
+
+    let img;
+    if (sourceKey) {
+      const usedKey = window.PaletteSwap
+        ? PaletteSwap.swapPalette(this, sourceKey, `${sourceKey}_${skin}_${hair}`, skin, hair)
+        : sourceKey;
+      img = this.add.image(this.portraitX, this.portraitY, usedKey).setOrigin(0.5);
+      const scale = this.portraitMaxH / img.height;
+      img.setScale(scale);
+    } else {
+      img = this.add.rectangle(this.portraitX, this.portraitY, 140, 240, arch.color, 0.3);
+    }
+
+    this.currentPortraitImage = img;
+  }
+
   refreshCard() {
     const arch = this.archetypes[this.currentIndex];
 
-    // show current portrait, hide others
-    Object.entries(this.portraitImages).forEach(([key, img]) => {
-      img.setVisible(key === arch.key);
-    });
+    this.refreshPortrait();
 
     this.labelText.setText(arch.label).setColor(arch.hex);
     this.nameText.setText(arch.name);
     this.loreText.setText(arch.lore);
     this.statsText.setText(arch.stats);
 
-    // update dots
     this.dots.forEach((dot, i) => {
       dot.setFillStyle(i === this.currentIndex ? arch.color : 0x444455);
       dot.setRadius(i === this.currentIndex ? 4 : 3);
     });
 
-    // dim/brighten arrows based on whether there's a next/prev
     this.leftArrow.setColor(this.currentIndex === 0 ? '#222233' : '#ebe2d2');
     this.rightArrow.setColor(this.currentIndex === this.archetypes.length - 1 ? '#222233' : '#ebe2d2');
   }
@@ -253,17 +256,12 @@ class CharacterCreationScene extends Phaser.Scene {
     const { skin, hair } = this.selected;
     const playerState = this.buildPlayerState(arch.key, skin, hair);
 
+    this.registry.set('playerState', playerState);
+
     this.cameras.main.fadeOut(400, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start('CombatScene', {
-        enemy: {
-          key: 'training_dummy',
-          name: 'Training Dummy',
-          hp: 30, maxHp: 30, atk: 4, def: 4, spd: 4, lck: 3,
-          moves: ['STRIKE', 'HOLD', 'SLIP'],
-          telegraph: { STRIKE:'winding up', HOLD:'bracing', SLIP:'stepping in' }
-        },
-        playerState,
+        npcId: 'training_dummy',
         returnScene: 'CharacterCreationScene',
         isTestBattle: true
       });
