@@ -22,7 +22,7 @@
         displayName: 'Mark',
         role: 'boss',
         episode: 1,
-        spritePath: 'assets/sprites/npcs/mark/',
+        spritePath: 'assets/sprites/NPCs/mark/',
         extraFrames: ['stillness_1', 'stillness_2'],
 
         stats: { hp: 45, maxHp: 45, atk: 5, def: 5, spd: 5, lck: 4 },
@@ -48,7 +48,7 @@
         displayName: 'The Skeptic',
         role: 'minor',
         episode: 1,
-        spritePath: 'assets/sprites/npcs/skeptic/',
+        spritePath: 'assets/sprites/NPCs/skeptic/',
         extraFrames: [],
 
         stats: { hp: 22, maxHp: 22, atk: 6, def: 2, spd: 4, lck: 2 },
@@ -68,7 +68,7 @@
         displayName: 'The Walker',
         role: 'minor',
         episode: 1,
-        spritePath: 'assets/sprites/npcs/walker/',
+        spritePath: 'assets/sprites/NPCs/walker/',
         extraFrames: ['walk_1', 'walk_2', 'walk_3', 'walk_4', 'walk_5', 'walk_6'],
 
         stats: { hp: 28, maxHp: 28, atk: 5, def: 4, spd: 8, lck: 2 },
