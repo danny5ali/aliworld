@@ -1,9 +1,10 @@
 // aliworld/scenes/E1Scene.js
-// episode 1 - portrait orientation
-// uses DialogueManager, real backgrounds, archetype sprites, real NPC sprites
 //
-// progress states: 'intro' -> 'skeptic_fight' -> 'walker_beat' -> 'walker_fight'
-//                  -> 'cafe_beat' -> 'mark_fight' -> 'obsidian_beat' -> 'complete'
+// episode 1 — the field / the cafe
+// flow: field intro → skeptic fight → walker fight → cafe → mark boss → obsidian end scene
+//
+// combat returns here (returnScene: 'E1Scene').
+// progress tracked in registry so the right beat resumes after each fight.
 
 class E1Scene extends Phaser.Scene {
   constructor() {
@@ -13,79 +14,25 @@ class E1Scene extends Phaser.Scene {
   init(data) {
     this.combatResult  = data && data.combatResult;
     this.defeatedEnemy = data && data.enemyKey;
-    this.droppedItem   = data && data.droppedItem;
   }
 
   create() {
+    // on a loss, restore hp and retry the same beat
     if (this.combatResult === 'lose') {
       const p = this.registry.get('playerState');
       if (p) { p.hp = p.maxHp; this.registry.set('playerState', p); }
     }
 
+    // advance progress only on a win
     if (this.combatResult === 'win') {
-      const ps = this.registry.get('playerState');
-      if (ps) {
-        const recovery = Math.floor((ps.maxHp || 28) * 0.25);
-        ps.hp = Math.min(ps.maxHp, (ps.hp || ps.maxHp) + recovery);
-        this.registry.set('playerState', ps);
-      }
       const current = this.registry.get('e1Progress');
-      let payoff = null;
-
-      if (current === 'skeptic_fight') {
-        this.registry.set('e1Progress', 'walker_beat');
-        payoff = {
-          enemyName: 'the skeptic',
-          lines: [
-            { speaker: null, text: 'he stops. blinks twice.' },
-            { speaker: null, text: 'walks past you like nothing happened.' },
-            { speaker: null, text: "he won't remember asking." },
-          ]
-        };
-      } else if (current === 'walker_fight') {
-        this.registry.set('e1Progress', 'cafe_beat');
-        payoff = {
-          enemyName: 'the walker',
-          lines: [
-            { speaker: null,     text: 'he keeps walking.' },
-            { speaker: 'walker', text: 'that new joint is —' },
-            { speaker: null,     text: "the loop holds. but he's a little quieter now." },
-          ]
-        };
-      } else if (current === 'mark_fight') {
-        this.registry.set('e1Progress', 'obsidian_beat');
-        payoff = {
-          enemyName: 'mark',
-          lines: [
-            { speaker: null, text: "mark goes still. his eyes don't move." },
-            { speaker: null, text: "the conversation kept going. it just wasn't with him anymore." },
-            { speaker: null, text: 'on the table behind him, a red jacket.' },
-            { speaker: null, text: "you don't remember seeing it before." },
-          ]
-        };
-      }
-
-      if (payoff && this.droppedItem) {
-        payoff.lines.push(
-          { speaker: null, text: `you found: ${this.droppedItem.name}.` },
-          { speaker: null, text: this.droppedItem.desc || '' }
-        );
-      }
-      this._pendingPayoff = payoff;
+      if (current === 'skeptic_fight') this.registry.set('e1Progress', 'walker_beat');
+      if (current === 'walker_fight')  this.registry.set('e1Progress', 'cafe_beat');
+      if (current === 'mark_fight')    this.registry.set('e1Progress', 'obsidian_beat');
     }
 
     const progress = this.registry.get('e1Progress') || 'intro';
 
-    if (this._pendingPayoff) {
-      const payoff = this._pendingPayoff;
-      this._pendingPayoff = null;
-      return this.showPayoff(payoff, () => this.routeToProgress(progress));
-    }
-
-    return this.routeToProgress(progress);
-  }
-
-  routeToProgress(progress) {
     switch (progress) {
       case 'intro':         return this.startIntro();
       case 'skeptic_fight': return this.startSkepticFight();
@@ -94,309 +41,257 @@ class E1Scene extends Phaser.Scene {
       case 'cafe_beat':     return this.startCafeBeat();
       case 'mark_fight':    return this.startMarkFight();
       case 'obsidian_beat': return this.startObsidianBeat();
-      case 'complete':
-        this.registry.set('e1Progress', null);
-        this.scene.start('HomeScene');
-        return;
       default:              return this.startIntro();
     }
   }
 
-  showPayoff(payoff, onComplete) {
+  // ─── SHARED UTILITIES ────────────────────────────────────────────────────
+
+  drawFieldBg() {
     const { width, height } = this.scale;
-    this.add.rectangle(0, 0, width, height, 0x000000).setOrigin(0, 0);
-    this.cameras.main.fadeIn(800, 0, 0, 0);
-    this.time.delayedCall(600, () => {
-      this.showDialogue(payoff.lines, onComplete);
+    this.add.rectangle(0, 0, width, height * 0.65, 0x87ceeb).setOrigin(0, 0);
+    this.add.rectangle(0, height * 0.65, width, height * 0.35, 0x4a7c3f).setOrigin(0, 0);
+    [0.15, 0.45, 0.75].forEach(x => {
+      this.add.ellipse(width * x, height * 0.15, 120, 40, 0xffffff, 0.7);
+    });
+    this.add.rectangle(0, height * 0.72, width, 4, 0x2d5a1b).setOrigin(0, 0);
+  }
+
+  drawCafeBg() {
+    const { width, height } = this.scale;
+    this.add.rectangle(0, 0, width, height, 0x2a1f0f).setOrigin(0, 0);
+    this.add.rectangle(40, 30, width - 80, height - 60, 0xd4956a).setOrigin(0, 0);
+    this.add.rectangle(0, height * 0.7, width, height * 0.3, 0x8b5e3c).setOrigin(0, 0);
+    this.add.rectangle(width * 0.3, 40, width * 0.4, height * 0.4, 0xfff8e7, 0.6).setOrigin(0, 0);
+    [[0.2, 0.65], [0.5, 0.65], [0.8, 0.65]].forEach(([x, y]) => {
+      this.add.rectangle(width * x, height * y, 60, 8, 0x5a3a1a).setOrigin(0.5);
+      this.add.rectangle(width * x, height * y + 30, 6, 40, 0x5a3a1a).setOrigin(0.5, 0);
     });
   }
 
-  // ─── BACKGROUND ───────────────────────────────────────────────────────────
-  // the bg image IS the canvas. stretch to fit exactly via independent x/y.
-  // no aspect preservation. no sky color bleed. no gaps. ever.
-
-  drawBg(key) {
+  drawObsidianBg() {
     const { width, height } = this.scale;
-    this.cameras.main.setBackgroundColor('#000000');
-
-    if (this.textures.exists(key)) {
-      const img = this.add.image(0, 0, key).setOrigin(0, 0);
-      // independent x and y scale: image lands exactly at canvas dimensions
-      img.setDisplaySize(width, height);
-      img.setDepth(-100);
-    } else {
-      const colors = { bg_field:0x2a4a2a, bg_cafe:0x2a1f0f, bg_obsidian:0x1a2030, bg_steps:0x2a3a2a };
-      this.add.rectangle(0, 0, width, height, colors[key] || 0x0a0a0f).setOrigin(0, 0).setDepth(-100);
-    }
-
-    // ground line: shared anchor for player + npcs. feet plant here.
-    this._groundY = height - 220;
-  }
-
-  // ─── PLAYER ───────────────────────────────────────────────────────────────
-
-  addPlayerSprite(xRatio = 0.25) {
-    const { width } = this.scale;
-    const x = width * xRatio;
-    const y = (this._groundY !== undefined) ? this._groundY : this.scale.height - 220;
-
-    const config = this.registry.get('avatarConfig') || {};
-    const archetype = config.archetype || 'atk';
-    const state     = config.outerwear_state || 'pre_e1';
-    const skin      = config.skin_tone || 'medium';
-    const hair      = config.hair_color || 'black';
-
-    const sourceKey = `${archetype}_${state}_idle_0`;
-
-    if (this.textures.exists(sourceKey)) {
-      const usedKey = window.PaletteSwap
-        ? PaletteSwap.swapPalette(this, sourceKey, `${sourceKey}_${skin}_${hair}`, skin, hair)
-        : sourceKey;
-      const img = this.add.image(x, y, usedKey).setOrigin(0.5, 1);
-      img.setScale(0.45);
-      img.setDepth(10);
-      return img;
-    } else {
-      return this.add.rectangle(x, y, 36, 70, 0x4444cc).setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1).setDepth(10);
+    this.add.rectangle(0, 0, width, height, 0x1a2030).setOrigin(0, 0);
+    this.add.rectangle(0, height * 0.5, width, height * 0.5, 0x0a0f18).setOrigin(0, 0);
+    this.add.rectangle(width * 0.1, height * 0.15, width * 0.8, height * 0.5, 0x2a3040).setOrigin(0, 0);
+    this.add.text(width / 2, height * 0.32, 'OBSIDIAN', {
+      fontFamily: 'monospace', fontSize: '32px', color: '#6688cc', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    for (let i = 0; i < 6; i++) {
+      this.add.circle(width * 0.1 + (width * 0.8 / 5) * i, height * 0.18, 4, 0xffee88);
     }
   }
 
-  // ─── NPCs ─────────────────────────────────────────────────────────────────
-
-  addNPC(npcId, xRatio = 0.65, opts) {
-    opts = opts || {};
+  // dialogue system
+  // speaker: null = narration (dimmer color), string = character name
+  showDialogue(lines, onComplete) {
     const { width, height } = this.scale;
-    const x = width * xRatio;
-    const y = (this._groundY !== undefined) ? this._groundY : height - 220;
+    const boxH = 110;
+    const boxY = height - boxH - 10;
 
-    const idleKey = window.NPCRegistry && NPCRegistry.getFrame(this, npcId, 'idle_1');
+    const box = this.add.rectangle(width / 2, boxY + boxH / 2, width - 40, boxH, 0x07070f, 0.94)
+      .setStrokeStyle(1, 0x333355);
+    const speakerText = this.add.text(40, boxY + 12, '', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#888899'
+    });
+    const lineText = this.add.text(40, boxY + 30, '', {
+      fontFamily: 'monospace', fontSize: '15px',
+      color: '#ebe2d2', // default: character dialogue
+      wordWrap: { width: width - 100 }
+    });
+    const promptText = this.add.text(width - 50, boxY + boxH - 20, '▶', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#444466'
+    }).setOrigin(0.5);
 
-    let sprite;
-    if (idleKey) {
-      sprite = this.add.image(x, y, idleKey).setOrigin(0.5, 1);
-      const targetH = height * 0.28;
-      sprite.setScale(targetH / sprite.height);
-    } else {
-      sprite = this.add.rectangle(x, y, 40, 76, 0xaa7744).setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1);
-      const label = opts.label || npcId;
-      this.add.text(x, y - 88, label, {
-        fontFamily:'monospace', fontSize:'12px', color:'#aaaaaa'
-      }).setOrigin(0.5).setDepth(11);
-    }
-    sprite.setDepth(10);
-    sprite.npcId = npcId;
+    this.tweens.add({
+      targets: promptText, alpha: { from: 1, to: 0.2 },
+      duration: 600, yoyo: true, repeat: -1
+    });
 
-    if (opts.cycle !== false && idleKey) {
-      sprite.idleFrames = ['idle_1', 'idle_2'];
-      sprite._frameIdx = 0;
-      this.time.addEvent({
-        delay: opts.cycleMs || 1200,
-        loop: true,
-        callback: () => {
-          if (!sprite.active) return;
-          sprite._frameIdx = (sprite._frameIdx + 1) % sprite.idleFrames.length;
-          const k = NPCRegistry.getFrame(this, npcId, sprite.idleFrames[sprite._frameIdx]);
-          if (k) sprite.setTexture(k);
-        }
-      });
-    }
+    let index = 0;
 
-    return sprite;
-  }
-
-  addWalker(xRatio = 0.65) {
-    const sprite = this.addNPC('walker', xRatio, { cycle: false });
-    if (sprite.setTexture) {
-      sprite.idleFrames = ['walk_1','walk_2','walk_3','walk_4','walk_5','walk_6'];
-      sprite._frameIdx = 0;
-      this.time.addEvent({
-        delay: 180, loop: true,
-        callback: () => {
-          if (!sprite.active) return;
-          sprite._frameIdx = (sprite._frameIdx + 1) % sprite.idleFrames.length;
-          const k = NPCRegistry.getFrame(this, 'walker', sprite.idleFrames[sprite._frameIdx]);
-          if (k) sprite.setTexture(k);
-        }
-      });
-    }
-    return sprite;
-  }
-
-  addMarkStill(xRatio = 0.7) {
-    const sprite = this.addNPC('mark', xRatio, { cycle: false });
-    if (sprite.setTexture) {
-      const stillKey = NPCRegistry.getFrame(this, 'mark', 'stillness_1');
-      if (stillKey) {
-        sprite.setTexture(stillKey);
-        sprite.idleFrames = ['stillness_1','stillness_2'];
-        sprite._frameIdx = 0;
-        this.time.addEvent({
-          delay: 3400, loop: true,
-          callback: () => {
-            if (!sprite.active) return;
-            sprite._frameIdx = (sprite._frameIdx + 1) % sprite.idleFrames.length;
-            const k = NPCRegistry.getFrame(this, 'mark', sprite.idleFrames[sprite._frameIdx]);
-            if (k) sprite.setTexture(k);
-          }
-        });
+    const showLine = () => {
+      if (index >= lines.length) {
+        box.destroy(); speakerText.destroy();
+        lineText.destroy(); promptText.destroy();
+        return onComplete && onComplete();
       }
-    }
-    return sprite;
-  }
+      const { speaker, text } = lines[index];
+      const isNarration = !speaker;
 
-  addMenuButton() {
-    const { width } = this.scale;
-    const btnX = width - 38;
-    const btnY = 28;
-    const bg = this.add.circle(btnX, btnY, 18, 0x1a1a2a)
-      .setStrokeStyle(1, 0x444455)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(50);
-    const icon = this.add.text(btnX, btnY, '⋮', {
-      fontFamily:'monospace', fontSize:'20px', color:'#888899'
-    }).setOrigin(0.5).setDepth(51);
-    bg.on('pointerup', () => {
-      this.fadeOut(300, () => {
-        this.scene.start('AccessoryScene', { returnScene: 'E1Scene' });
+      speakerText.setText(speaker ? speaker.toUpperCase() : '');
+      // narration = muted warm gray, dialogue = cream
+      lineText.setColor(isNarration ? '#8a8070' : '#ebe2d2');
+      lineText.setText('');
+
+      let charIdx = 0;
+      const ticker = this.time.addEvent({
+        delay: isNarration ? 22 : 28,
+        repeat: text.length - 1,
+        callback: () => { lineText.setText(text.slice(0, ++charIdx)); }
       });
-    });
-    return { bg, icon };
+
+      const advance = () => {
+        if (charIdx < text.length) {
+          ticker.remove(); lineText.setText(text); charIdx = text.length;
+        } else {
+          index++; showLine();
+        }
+      };
+
+      this.input.once('pointerdown', advance);
+      this.input.keyboard.once('keydown-SPACE', advance);
+      this.input.keyboard.once('keydown-ENTER', advance);
+    };
+
+    showLine();
   }
 
-  fadeIn(d, cb) {
-    this.cameras.main.fadeIn(d || 600, 0, 0, 0);
-    if (cb) this.time.delayedCall(d || 600, cb);
+  fadeIn(duration, cb) {
+    this.cameras.main.fadeIn(duration || 600, 0, 0, 0);
+    if (cb) this.time.delayedCall(duration || 600, cb);
   }
 
-  fadeOut(d, cb) {
-    this.cameras.main.fadeOut(d || 600, 0, 0, 0);
+  fadeOut(duration, cb) {
+    this.cameras.main.fadeOut(duration || 600, 0, 0, 0);
     if (cb) this.cameras.main.once('camerafadeoutcomplete', cb);
   }
 
-  showDialogue(lines, onComplete) {
-    if (this._dialogue) this._dialogue.cleanup();
-    this._dialogue = new DialogueManager(this);
-    this._dialogue.show(lines, onComplete);
+  addNPC(x, y, color, label) {
+    const npc = this.add.rectangle(x, y, 36, 54, color).setStrokeStyle(2, 0xffffff);
+    if (label) {
+      this.add.text(x, y - 36, label, {
+        fontFamily: 'monospace', fontSize: '11px', color: '#aaaaaa'
+      }).setOrigin(0.5);
+    }
+    return npc;
   }
 
-  launchCombat(npcId, progressKey) {
+  addPlayer(x, y) {
+    return this.add.rectangle(x, y, 32, 48, 0x4444cc).setStrokeStyle(2, 0xffffff);
+  }
+
+  launchCombat(enemyKey, progressKey) {
     this.registry.set('e1Progress', progressKey);
-    if (this._dialogue) this._dialogue.cleanup();
+    const playerState = this.registry.get('playerState');
     this.fadeOut(400, () => {
       this.scene.start('CombatScene', {
-        npcId: npcId,
+        enemy: E1_ENEMIES[enemyKey],
+        playerState,
         returnScene: 'E1Scene'
       });
     });
   }
 
-  // ─── BEATS ────────────────────────────────────────────────────────────────
+  // ─── BEAT 1: INTRO ───────────────────────────────────────────────────────
 
   startIntro() {
     this.fadeIn(1000);
-    this.drawBg('bg_field');
-    const { width } = this.scale;
+    this.drawFieldBg();
+    const { width, height } = this.scale;
+    const player = this.addPlayer(80, height * 0.68);
 
-    const player = this.addPlayerSprite(0.18);
+    const lines = [
+      { speaker: null,  text: 'where am i.' },
+      { speaker: null,  text: 'what is this place.' },
+      { speaker: null,  text: 'it feels like something already happened here.' },
+      { speaker: null,  text: 'like everyone is playing a part they don\'t know they memorized.' },
+      { speaker: null,  text: 'i\'ve been here before. i don\'t remember arriving.' },
+    ];
 
-    this.showDialogue([
-      { speaker:null, text:'where am i.' },
-      { speaker:null, text:'what is this place.' },
-      { speaker:null, text:'it feels like something already happened here.' },
-      { speaker:null, text:"like everyone is playing a part they don't know they memorized." },
-      { speaker:null, text:"i've been here before. i don't remember arriving." },
-    ], () => {
+    this.showDialogue(lines, () => {
       this.tweens.add({
-        targets: player, x: width * 0.4, duration: 1400, ease:'Linear',
+        targets: player, x: width * 0.35, duration: 1200, ease: 'Linear',
         onComplete: () => this.triggerSkeptic(player)
       });
     });
   }
 
   triggerSkeptic(player) {
-    const { width } = this.scale;
-
-    const skeptic = this.addNPC('skeptic', 1.2, { label: 'stranger' });
+    const { width, height } = this.scale;
+    const skeptic = this.addNPC(width - 80, height * 0.68, 0xaa7744, 'stranger');
     this.tweens.add({
-      targets: skeptic, x: width * 0.7, duration: 900, ease:'Linear',
+      targets: skeptic, x: width * 0.65, duration: 900, ease: 'Linear',
       onComplete: () => {
         this.showDialogue([
-          { speaker:'stranger', text:'hey.' },
-          { speaker:'stranger', text:"hey — i'm talking to you." },
-          { speaker:null,       text:"he asked you a question. you didn't answer. now he's angry." },
+          { speaker: 'stranger', text: 'hey.' },
+          { speaker: 'stranger', text: 'hey — i\'m talking to you.' },
+          { speaker: null,       text: 'he asked you a question. you didn\'t answer. now he\'s angry.' },
         ], () => this.launchCombat('skeptic', 'skeptic_fight'));
       }
     });
   }
 
+  // resume point if player lost to skeptic and reloaded
   startSkepticFight() {
     this.fadeIn(400);
-    this.drawBg('bg_field');
-
-    this.addPlayerSprite(0.4);
-    this.addNPC('skeptic', 0.7, { label: 'stranger' });
+    this.drawFieldBg();
+    const { width, height } = this.scale;
+    this.addPlayer(width * 0.35, height * 0.68);
+    this.addNPC(width * 0.65, height * 0.68, 0xaa7744, 'stranger');
     this.showDialogue([
-      { speaker:null, text:"he's still in your way." }
+      { speaker: null, text: 'he\'s still in your way.' }
     ], () => this.launchCombat('skeptic', 'skeptic_fight'));
   }
 
+  // ─── BEAT 2: WALKER ──────────────────────────────────────────────────────
+
   startWalkerBeat() {
     this.fadeIn(600);
-    this.drawBg('bg_field');
-    this.addMenuButton();
-
-    this.addPlayerSprite(0.25);
-    this.addWalker(0.65);
+    this.drawFieldBg();
+    const { width, height } = this.scale;
+    this.addPlayer(width * 0.2, height * 0.68);
+    this.addNPC(width * 0.6, height * 0.68, 0x778899, 'walker');
 
     this.showDialogue([
-      { speaker:'walker', text:'that new joint is crazy.' },
-      { speaker:'walker', text:'that new joint is crazy.' },
-      { speaker:null,     text:"he doesn't see you. he's somewhere else entirely." },
-      { speaker:null,     text:'you step into his path.' },
-      { speaker:'walker', text:'that new joint is crazy.' },
-      { speaker:'walker', text:'that new joint is —' },
-      { speaker:'walker', text:'... you.' },
+      { speaker: 'walker', text: 'that new joint is crazy.' },
+      { speaker: 'walker', text: 'that new joint is crazy.' },
+      { speaker: null,     text: 'he doesn\'t see you. he\'s somewhere else entirely.' },
+      { speaker: null,     text: 'you step into his path.' },
+      { speaker: 'walker', text: 'that new joint is crazy.' },
+      { speaker: 'walker', text: 'that new joint is —' },
+      { speaker: 'walker', text: '... you.' },
     ], () => this.launchCombat('walker', 'walker_fight'));
   }
 
   startWalkerFight() {
     this.fadeIn(400);
-    this.drawBg('bg_field');
-
-    this.addPlayerSprite(0.25);
-    this.addWalker(0.65);
+    this.drawFieldBg();
+    const { width, height } = this.scale;
+    this.addPlayer(width * 0.2, height * 0.68);
+    this.addNPC(width * 0.6, height * 0.68, 0x778899, 'walker');
     this.showDialogue([
-      { speaker:'walker', text:'that new joint is crazy.' },
-      { speaker:null,     text:'he loops back.' }
+      { speaker: 'walker', text: 'that new joint is crazy.' },
+      { speaker: null,     text: 'he loops back.' }
     ], () => this.launchCombat('walker', 'walker_fight'));
   }
 
+  // ─── BEAT 3: CAFE + MARK ─────────────────────────────────────────────────
+
   startCafeBeat() {
     this.fadeIn(800);
-    this.drawBg('bg_cafe');
-    this.addMenuButton();
-    const { width } = this.scale;
-
-    this.addPlayerSprite(0.2);
-    this.addNPC('skeptic', 0.55, { label: null, cycle: false });
-    const mark = this.addMarkStill(0.8);
+    this.drawCafeBg();
+    const { width, height } = this.scale;
+    const player = this.addPlayer(width * 0.15, height * 0.65);
+    this.addNPC(width * 0.52, height * 0.6, 0x888866, null);
+    const mark = this.addNPC(width * 0.62, height * 0.6, 0xcc9966, 'mark');
 
     this.showDialogue([
-      { speaker:null,   text:'the cafe is warm. everyone is talking.' },
-      { speaker:null,   text:'nobody looks up. except one.' },
-      { speaker:'mark', text:'hey —' },
-      { speaker:'mark', text:'you been around here long?' },
+      { speaker: null,   text: 'the cafe is warm. everyone is talking.' },
+      { speaker: null,   text: 'nobody looks up. except one.' },
+      { speaker: 'mark', text: 'hey —' },
+      { speaker: 'mark', text: 'you been around here long?' },
     ], () => {
       this.tweens.add({
-        targets: mark, x: width * 0.5, duration: 800, ease:'Linear',
+        targets: mark, x: width * 0.42, duration: 800, ease: 'Linear',
         onComplete: () => {
           this.showDialogue([
-            { speaker:'mark', text:"i feel like i've seen you before." },
-            { speaker:null,   text:"his face is friendly. his eyes don't match." },
-            { speaker:'mark', text:"what'd you say your name was?" },
-            { speaker:null,   text:"you don't answer." },
-            { speaker:'mark', text:'you should sit down.' },
-            { speaker:null,   text:"the conversation wasn't an invitation. it was a hold." },
+            { speaker: 'mark', text: 'i feel like i\'ve seen you before.' },
+            { speaker: null,   text: 'his face is friendly. his eyes don\'t match.' },
+            { speaker: 'mark', text: 'what\'d you say your name was?' },
+            { speaker: null,   text: 'you don\'t answer.' },
+            { speaker: 'mark', text: 'you should sit down.' },
+            { speaker: null,   text: 'the conversation wasn\'t an invitation. it was a hold.' },
           ], () => this.launchCombat('mark', 'mark_fight'));
         }
       });
@@ -405,99 +300,92 @@ class E1Scene extends Phaser.Scene {
 
   startMarkFight() {
     this.fadeIn(400);
-    this.drawBg('bg_cafe');
-
-    this.addPlayerSprite(0.2);
-    this.addMarkStill(0.5);
+    this.drawCafeBg();
+    const { width, height } = this.scale;
+    this.addPlayer(width * 0.15, height * 0.65);
+    this.addNPC(width * 0.42, height * 0.6, 0xcc9966, 'mark');
     this.showDialogue([
-      { speaker:'mark', text:'you should sit down.' },
-      { speaker:null,   text:"he says it again. like it's the first time." }
+      { speaker: 'mark', text: 'you should sit down.' },
+      { speaker: null,   text: 'he says it again. like it\'s the first time.' }
     ], () => this.launchCombat('mark', 'mark_fight'));
   }
+
+  // ─── BEAT 4: OBSIDIAN ────────────────────────────────────────────────────
 
   startObsidianBeat() {
     this.equipRedJacket();
     this.fadeIn(1000);
-    this.drawBg('bg_obsidian');
-    const { width } = this.scale;
-
-    const config = this.registry.get('avatarConfig') || {};
-    const arch = config.archetype || 'atk';
-    const skin = config.skin_tone || 'medium';
-    const hair = config.hair_color || 'black';
-    const srcKey = `${arch}_post_e1_idle_0`;
-
-    let playerSprite;
-    const y = (this._groundY !== undefined) ? this._groundY : this.scale.height - 220;
-
-    if (this.textures.exists(srcKey)) {
-      const usedKey = window.PaletteSwap
-        ? PaletteSwap.swapPalette(this, srcKey, `${srcKey}_${skin}_${hair}`, skin, hair)
-        : srcKey;
-      playerSprite = this.add.image(width * 0.5, y, usedKey).setOrigin(0.5, 1).setScale(0.6).setDepth(10);
-    } else {
-      playerSprite = this.add.rectangle(width * 0.5, y, 40, 80, 0xb32a1f)
-        .setStrokeStyle(2, 0xff6644).setOrigin(0.5, 1).setDepth(10);
-    }
-
-    this.showTriangleFlash(() => {
-      this.showDialogue([
-        { speaker:null, text:'the conversation kept going.' },
-        { speaker:null, text:"it just wasn't with him anymore." },
-        { speaker:null, text:'you walk out.' },
-        { speaker:null, text:"the jacket is on. you don't remember putting it on." },
-        { speaker:null, text:'someone across the street looks up.' },
-        { speaker:null, text:"that's the first sighting." },
-      ], () => {
-        this.fadeOut(1200, () => {
-          this.registry.set('e1Progress', 'complete');
-          this.scene.start('HomeScene', { e1Complete:true });
-        });
-      });
-    });
-  }
-
-  showTriangleFlash(onComplete) {
+    this.drawObsidianBg();
     const { width, height } = this.scale;
-    const g = this.add.graphics();
-    g.lineStyle(3, 0xb32a1f, 1);
-    const cx = width / 2, cy = height / 2, s = 80;
-    g.beginPath();
-    g.moveTo(cx, cy - s);
-    g.lineTo(cx + s * 0.866, cy + s * 0.5);
-    g.lineTo(cx - s * 0.866, cy + s * 0.5);
-    g.closePath();
-    g.strokePath();
-    g.lineBetween(cx - s * 0.4, cy + s * 0.5, cx + s * 0.4, cy + s * 0.5);
-    g.setAlpha(0);
-    g.setDepth(100);
 
-    this.tweens.add({
-      targets: g, alpha:{ from:0, to:1 }, duration:300, yoyo:true, repeat:2,
-      onComplete: () => { g.destroy(); onComplete && onComplete(); }
+    // player in red jacket
+    const player = this.addPlayer(width * 0.45, height * 0.68);
+    player.setFillStyle(0xb32a1f);
+    player.setStrokeStyle(2, 0xff6644);
+
+    this.showDialogue([
+      { speaker: null, text: 'the conversation kept going.' },
+      { speaker: null, text: 'it just wasn\'t with him anymore.' },
+      { speaker: null, text: 'you walk out.' },
+      { speaker: null, text: 'the jacket is on. you don\'t remember putting it on.' },
+      { speaker: null, text: 'someone across the street looks up.' },
+      { speaker: null, text: 'that\'s the first sighting.' },
+    ], () => {
+      this.fadeOut(1200, () => {
+        this.registry.set('e1Progress', 'complete');
+        this.scene.start('OverworldScene', { e1Complete: true });
+      });
     });
   }
 
   equipRedJacket() {
     const config = this.registry.get('avatarConfig') || {};
     if (!config.outerwear_starter) {
-      config.outerwear_starter = config.outerwear_state || 'pre_e1';
+      config.outerwear_starter = config.outerwear || 'blacktrench';
     }
-    config.outerwear_state = 'post_e1';
+    config.outerwear = 'redjacket';
     this.registry.set('avatarConfig', config);
-
     const playerState = this.registry.get('playerState') || {};
-    playerState.outerwear_state = 'post_e1';
+    playerState.outerwear = 'redjacket';
     this.registry.set('playerState', playerState);
-
-    try {
-      const supabase = window.aliworldSupabase;
-      const userId = window.aliworldGame && window.aliworldGame.userId;
-      if (supabase && userId) {
-        supabase.from('aw_users').update({ outerwear_state:'post_e1' }).eq('user_id', userId).then(()=>{}).catch(()=>{});
-      }
-    } catch (e) {}
   }
 }
 
-window.E1Scene = E1Scene;
+// ─── ENEMY DEFINITIONS ───────────────────────────────────────────────────────
+
+const E1_ENEMIES = {
+  skeptic: {
+    key: 'skeptic',
+    name: 'The Skeptic',
+    hp: 22, maxHp: 22,
+    atk: 6, def: 2, spd: 4, lck: 2,
+    moves: ['STRIKE', 'STRIKE', 'SLIP'],
+    telegraph: { STRIKE: 'winding up', SLIP: 'stepping in close' }
+  },
+  walker: {
+    key: 'walker',
+    name: 'The Walker',
+    hp: 28, maxHp: 28,
+    atk: 5, def: 4, spd: 8, lck: 2,
+    moves: ['STRIKE', 'SLIP'],
+    telegraph: { STRIKE: 'that new joint is crazy', SLIP: 'that new joint is crazy' },
+    ai: 'repeat'
+  },
+  mark: {
+    key: 'mark',
+    name: 'Mark',
+    hp: 45, maxHp: 45,
+    atk: 5, def: 5, spd: 5, lck: 4,
+    moves: ['WHISPER', 'STRIKE', 'HOLD', 'WHISPER', 'LOOP'],
+    telegraph: {
+      WHISPER: 'what\'d you say your name was?',
+      STRIKE:  'i feel like i\'ve seen you before —',
+      HOLD:    'you should sit down',
+      LOOP:    'you been around here long?'
+    },
+    isBoss: true
+  }
+};
+
+window.E1Scene  = E1Scene;
+window.E1_ENEMIES = E1_ENEMIES;
