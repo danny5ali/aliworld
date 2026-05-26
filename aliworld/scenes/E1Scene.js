@@ -19,6 +19,13 @@ class E1Scene extends Phaser.Scene {
     }
 
     if (this.combatResult === 'win') {
+      // small post-fight recovery so HP carries forward meaningfully
+      const ps = this.registry.get('playerState');
+      if (ps) {
+        const recovery = Math.floor(ps.maxHp * 0.25);
+        ps.hp = Math.min(ps.maxHp, ps.hp + recovery);
+        this.registry.set('playerState', ps);
+      }
       const current = this.registry.get('e1Progress');
       // advance progress
       let payoff = null;

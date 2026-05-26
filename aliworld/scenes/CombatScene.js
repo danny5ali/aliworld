@@ -500,8 +500,15 @@ class CombatScene extends Phaser.Scene {
     const msg = result === 'win' ? `${this.enemy.name} is broken.` : 'you are broken.';
     this.log(msg);
 
+    // persist current player HP back to registry so it carries between fights
+    const playerState = this.registry.get('playerState');
+    if (playerState) {
+      playerState.hp = this.player.hp;
+      // clear any status effects so they don't carry over (fresh stance per encounter)
+      this.registry.set('playerState', playerState);
+    }
+
     this.time.delayedCall(1400, () => {
-      // for test battles, restore the playerState before returning so character creation isn't borked
       const data = { combatResult: result, enemyKey: this.enemy.key };
       this.scene.start(this.returnScene, data);
     });
