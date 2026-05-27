@@ -2,12 +2,8 @@
 // loadout screen: 3 equip slots, inventory of owned items, equip/unequip
 // stat bonuses + occasional drawbacks - real tradeoffs
 //
-// data model:
-//   playerState.accessories     = currently equipped items (array of item objects, max 3)
-//   playerState.inventory       = all owned items (array of item objects)
-//
-// on first time, give player the 5 starter items in inventory.
-// boss drops + minor enemy drops add to inventory.
+// icons render as png textures (acc_${id}) loaded by BootScene.
+// falls back to colored circle + letter if texture missing.
 
 class AccessoryScene extends Phaser.Scene {
   constructor() {
@@ -56,6 +52,26 @@ class AccessoryScene extends Phaser.Scene {
     this.refreshAll();
   }
 
+  // ─── ICON HELPER ─────────────────────────────────────────────────────────
+  // returns an array of display objects (image OR circle+letter).
+  // size = the diameter the icon should occupy.
+
+  makeIcon(item, x, y, size) {
+    const texKey = `acc_${item.id}`;
+    if (this.textures.exists(texKey)) {
+      const img = this.add.image(x, y, texKey).setOrigin(0.5);
+      img.setDisplaySize(size, size);
+      return [img];
+    }
+    // fallback: colored circle + letter
+    const color = STAT_COLOR[item.stat] || 0x666677;
+    const circle = this.add.circle(x, y, size / 2, color, 0.85).setStrokeStyle(1, 0xffffff);
+    const letter = this.add.text(x, y, item.stat[0].toUpperCase(), {
+      fontFamily:'monospace', fontSize:`${Math.floor(size * 0.45)}px`, fontStyle:'bold', color:'#ffffff'
+    }).setOrigin(0.5);
+    return [circle, letter];
+  }
+
   // ─── EQUIP SLOTS ─────────────────────────────────────────────────────────
 
   buildEquipSlots() {
@@ -78,17 +94,13 @@ class AccessoryScene extends Phaser.Scene {
         .setStrokeStyle(1, 0x333344)
         .setInteractive({ useHandCursor: true });
 
-      const placeholder = this.add.graphics();
-      const labelText = this.add.text(x, y, '', {
-        fontFamily:'monospace', fontSize:'14px', fontStyle:'bold', color:'#ebe2d2'
-      }).setOrigin(0.5);
       const slotNumText = this.add.text(x, y, `${i + 1}`, {
         fontFamily:'monospace', fontSize:'18px', color:'#222233'
       }).setOrigin(0.5);
 
       bg.on('pointerup', () => this.unequipSlot(i));
 
-      this._slotObjects.push({ bg, placeholder, labelText, slotNumText, x, y, slotSize });
+      this._slotObjects.push({ bg, slotNumText, x, y, slotSize, iconObjs: [] });
     }
   }
 
@@ -100,6 +112,7 @@ class AccessoryScene extends Phaser.Scene {
     });
 
     this._invContainer = this.add.container(0, 340);
+    this._invTopY = 340;
   }
 
   drawInventoryItems() {
@@ -108,7 +121,7 @@ class AccessoryScene extends Phaser.Scene {
     const itemSize = 54;
     const gap = 8;
     const cols = 4;
-    const iconR = 18;  // fill most of the tile
+    const iconSize = 36;  // fits inside tile with breathing room
 
     this._inventory.forEach((item, i) => {
       const col = i % cols;
@@ -122,26 +135,22 @@ class AccessoryScene extends Phaser.Scene {
         .setStrokeStyle(1, isEquipped ? 0x666677 : 0x222233)
         .setInteractive({ useHandCursor: true });
 
-      // icon: colored circle sized to fill tile, letter centered inside
-      const color = STAT_COLOR[item.stat] || 0x666677;
-      const circle = this.add.circle(x, y - 6, iconR, color, 0.85).setStrokeStyle(1, 0xffffff);
-      const letter = this.add.text(x, y - 6, item.stat[0].toUpperCase(), {
-        fontFamily:'monospace', fontSize:'16px', fontStyle:'bold', color:'#ffffff'
-      }).setOrigin(0.5);
+      const iconObjs = this.makeIcon(item, x, y - 6, iconSize);
 
-      const name = this.add.text(x, y + itemSize / 2 - 10, item.shortName || item.name.split(' ')[0], {
+      const name = this.add.text(x, y + itemSize / 2 - 9, item.shortName || item.name.split(' ')[0], {
         fontFamily:'monospace', fontSize:'8px', color:'#aaaabb'
       }).setOrigin(0.5);
+
+      const extras = [bg, ...iconObjs, name];
 
       if (isEquipped) {
         const eq = this.add.text(x + 22, y - 22, '●', {
           fontFamily:'monospace', fontSize:'10px', color:'#44cc88'
         }).setOrigin(0.5);
-        this._invContainer.add(eq);
+        extras.push(eq);
       }
 
-      // tooltip uses world Y accounting for container offset
-      const worldY = y + 340;
+      const worldY = y + this._invTopY;
       bg.on('pointerover', () => {
         bg.setFillStyle(0x1a1a2a);
         this.showTooltip(item, x, worldY, itemSize);
@@ -152,7 +161,7 @@ class AccessoryScene extends Phaser.Scene {
       });
       bg.on('pointerup', () => this.toggleEquip(item));
 
-      this._invContainer.add([bg, circle, letter, name]);
+      this._invContainer.add(extras);
     });
   }
 
@@ -188,11 +197,11 @@ class AccessoryScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'10px', color:'#666677'
     }).setOrigin(0.5);
 
-    this._statBg = this.add.rectangle(this.cx, y + 50, width - 60, 100, 0x0d0d1a)
+    this._statBg = this.add.rectangle(this.cx, y + 28, width - 60, 56, 0x0d0d1a)
       .setStrokeStyle(1, 0x222233);
-    this._statText = this.add.text(this.cx, y + 4, '', {
+    this._statText = this.add.text(this.cx, y + 28, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#aaaabb', align:'center'
-    }).setOrigin(0.5, 0);
+    }).setOrigin(0.5);
   }
 
   refreshStatPreview() {
@@ -217,24 +226,21 @@ class AccessoryScene extends Phaser.Scene {
   // ─── SLOT RENDERING ──────────────────────────────────────────────────────
 
   refreshSlotDisplay() {
-    this._slotObjects.forEach(({ bg, placeholder, labelText, slotNumText, x, y, slotSize }, i) => {
-      placeholder.clear();
+    this._slotObjects.forEach((slot, i) => {
+      // clear previous icon objects
+      slot.iconObjs.forEach(o => o.destroy());
+      slot.iconObjs = [];
+
       const item = this._equipped[i];
       if (item) {
+        const iconSize = slot.slotSize - 12;
+        slot.iconObjs = this.makeIcon(item, slot.x, slot.y, iconSize);
+        slot.slotNumText.setVisible(false);
         const color = STAT_COLOR[item.stat] || 0x666677;
-        const r = (slotSize / 2) - 4;   // circle fills almost the whole slot box
-        placeholder.fillStyle(color, 0.85);
-        placeholder.lineStyle(2, 0xffffff, 0.9);
-        placeholder.fillCircle(x, y, r);
-        placeholder.strokeCircle(x, y, r);
-        labelText.setText(item.stat[0].toUpperCase());
-        labelText.setPosition(x, y);
-        slotNumText.setVisible(false);
-        bg.setStrokeStyle(2, color);
+        slot.bg.setStrokeStyle(2, color);
       } else {
-        labelText.setText('');
-        slotNumText.setVisible(true);
-        bg.setStrokeStyle(1, 0x333344);
+        slot.slotNumText.setVisible(true);
+        slot.bg.setStrokeStyle(1, 0x333344);
       }
     });
   }
@@ -246,23 +252,20 @@ class AccessoryScene extends Phaser.Scene {
   }
 
   // ─── TOOLTIP ─────────────────────────────────────────────────────────────
-  // clamped: never above canvas top, never overlaps equip slots area
 
   showTooltip(item, x, worldY, itemSize) {
     this.hideTooltip();
     const { width, height } = this.scale;
     const TT_W = 180;
     const TT_H = 64;
-    const SAFE_TOP = 160;   // below the equip slots + stats area
+    const SAFE_TOP = 240;   // below stats area
 
     const tx = Math.min(Math.max(x, TT_W / 2 + 8), width - TT_W / 2 - 8);
 
-    // prefer above the item; if that would clip into equip area, show below
     let ty = worldY - (itemSize || 54) / 2 - TT_H / 2 - 8;
     if (ty < SAFE_TOP) {
       ty = worldY + (itemSize || 54) / 2 + TT_H / 2 + 8;
     }
-    // clamp bottom
     if (ty + TT_H / 2 > height - 50) {
       ty = height - 50 - TT_H / 2;
     }

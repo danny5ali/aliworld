@@ -1,6 +1,9 @@
 // aliworld/scenes/HomeScene.js
 // landing scene for returning players. shows current archetype + jacket state.
 // options: continue, new game (reset progress), loadout
+//
+// NOTE: palette swap is currently disabled. needs source-color recalibration
+// against actual sprite pixels before re-enabling. see drawPlayerPreview().
 
 class HomeScene extends Phaser.Scene {
   constructor() { super({ key: 'HomeScene' }); }
@@ -11,25 +14,19 @@ class HomeScene extends Phaser.Scene {
 
     this.cameras.main.fadeIn(800, 0, 0, 0);
 
-    // dark background with subtle sigil
     this.add.rectangle(0, 0, width, height, 0x07070f).setOrigin(0, 0);
     this.drawBackgroundSigil();
 
-    // logo / wordmark
     this.add.text(this.cx, 70, 'ALIWORLD', {
       fontFamily: 'monospace', fontSize: '32px', color: '#ebe2d2', fontStyle: 'bold'
     }).setOrigin(0.5);
 
-    // handle display
     const handle = (window.aliworldGame && window.aliworldGame.userHandle) || 'unknown';
     this.add.text(this.cx, 108, handle, {
       fontFamily: 'monospace', fontSize: '11px', color: '#555566'
     }).setOrigin(0.5);
 
-    // player sprite preview (with palette swap applied)
     this.drawPlayerPreview();
-
-    // buttons
     this.buildButtons();
   }
 
@@ -56,19 +53,17 @@ class HomeScene extends Phaser.Scene {
     const config = this.registry.get('avatarConfig') || {};
     const archetype = config.archetype || 'atk';
     const state = config.outerwear_state || 'pre_e1';
-    const skin = config.skin_tone || 'medium';
-    const hair = config.hair_color || 'black';
     const srcKey = `${archetype}_${state}_idle_0`;
 
-    if (this.textures.exists(srcKey) && window.PaletteSwap) {
-      const targetKey = `${srcKey}_${skin}_${hair}`;
-      const finalKey = PaletteSwap.swapPalette(this, srcKey, targetKey, skin, hair);
-      const img = this.add.image(this.cx, this.scale.height / 2 - 40, finalKey).setOrigin(0.5, 0.5);
+    if (this.textures.exists(srcKey)) {
+      // palette swap disabled. when re-enabled, replace srcKey below with:
+      //   const skin = config.skin_tone || 'medium';
+      //   const hair = config.hair_color || 'black';
+      //   const finalKey = PaletteSwap.swapPalette(this, srcKey, `${srcKey}_${skin}_${hair}`, skin, hair);
+      const img = this.add.image(this.cx, this.scale.height / 2 - 40, srcKey).setOrigin(0.5, 0.5);
       const targetH = 320;
-      const sourceH = img.height;
-      const scale = Math.min(1, targetH / sourceH);
+      const scale = Math.min(1, targetH / img.height);
       img.setScale(scale);
-      // gentle bob
       this.tweens.add({
         targets: img, y: img.y + 4,
         duration: 2400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'
@@ -83,7 +78,6 @@ class HomeScene extends Phaser.Scene {
   buildButtons() {
     const { width, height } = this.scale;
     const e1Progress = this.registry.get('e1Progress');
-    const config = this.registry.get('avatarConfig') || {};
     const hasProgress = e1Progress && e1Progress !== 'intro';
 
     const btnX = this.cx;
@@ -92,7 +86,6 @@ class HomeScene extends Phaser.Scene {
     const btnH = 50;
     const btnW = width - 60;
 
-    // continue / begin button
     const continueLabel = hasProgress ? 'CONTINUE' : 'BEGIN EPISODE 1';
     const cBg = this.add.rectangle(btnX, startY, btnW, btnH, 0xb32a1f)
       .setInteractive({ useHandCursor: true });
@@ -106,7 +99,6 @@ class HomeScene extends Phaser.Scene {
       this.scene.start('E1Scene');
     });
 
-    // loadout button
     const lY = startY + btnH + gap;
     const lBg = this.add.rectangle(btnX, lY, btnW, btnH, 0x1a1a2a)
       .setStrokeStyle(1, 0x444455).setInteractive({ useHandCursor: true });
@@ -115,7 +107,6 @@ class HomeScene extends Phaser.Scene {
     }).setOrigin(0.5);
     lBg.on('pointerup', () => this.scene.start('AccessoryScene', { returnScene: 'HomeScene' }));
 
-    // new game (reset) button
     const nY = lY + btnH + gap;
     const nBg = this.add.rectangle(btnX, nY, btnW, btnH, 0x1a1a2a)
       .setStrokeStyle(1, 0x333344).setInteractive({ useHandCursor: true });
@@ -128,7 +119,6 @@ class HomeScene extends Phaser.Scene {
   confirmNewGame() {
     const { width, height } = this.scale;
 
-    // dark overlay
     const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.85)
       .setOrigin(0, 0).setDepth(500).setInteractive();
 
@@ -159,18 +149,15 @@ class HomeScene extends Phaser.Scene {
     no.on('pointerup', () => {
       overlay.destroy(); box.destroy(); q.destroy(); detail.destroy();
       yes.destroy(); no.destroy();
-      // clean up text - in phaser, destroying parent doesn't always clean text
       this.children.list.filter(c => c.depth >= 502).forEach(c => c.destroy());
     });
   }
 
   async resetProgress() {
-    // wipe registry
     this.registry.set('e1Progress', null);
     this.registry.set('avatarConfig', null);
     this.registry.set('playerState', null);
 
-    // wipe supabase row
     try {
       const supabase = window.aliworldSupabase;
       const userId = window.aliworldGame && window.aliworldGame.userId;

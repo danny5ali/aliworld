@@ -1,6 +1,9 @@
 // aliworld/scenes/E1Scene.js
 // episode 1 - portrait orientation
-// uses DialogueManager, real backgrounds, archetype sprites
+// uses DialogueManager, real backgrounds, archetype sprites, real NPC sprites
+//
+// NOTE: palette swap is currently disabled. needs source-color recalibration
+// against actual sprite pixels before re-enabling. see comments at applyPalette().
 
 class E1Scene extends Phaser.Scene {
   constructor() {
@@ -22,8 +25,8 @@ class E1Scene extends Phaser.Scene {
     if (this.combatResult === 'win') {
       const ps = this.registry.get('playerState');
       if (ps) {
-        const recovery = Math.floor(ps.maxHp * 0.25);
-        ps.hp = Math.min(ps.maxHp, ps.hp + recovery);
+        const recovery = Math.floor((ps.maxHp || 28) * 0.25);
+        ps.hp = Math.min(ps.maxHp, (ps.hp || ps.maxHp) + recovery);
         this.registry.set('playerState', ps);
       }
       const current = this.registry.get('e1Progress');
@@ -104,26 +107,31 @@ class E1Scene extends Phaser.Scene {
     this.time.delayedCall(600, () => {
       this.showDialogue(payoff.lines, onComplete);
     });
-    this._skipSwitch = true;
   }
 
   // ─── BACKGROUND ──────────────────────────────────────────────────────────
-  // place at natural dimensions, centered. no scaling. whatever fits is visible.
-  // black fill behind it so gaps (if any) are dark, not a distracting color.
+  // cover-fit: scale to fill the larger axis so the canvas is fully covered.
+  // anchored to bottom-center so the ground line stays in frame even if the
+  // top crops.
 
   drawBg(key) {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#000000');
 
     if (this.textures.exists(key)) {
-      const img = this.add.image(width / 2, height / 2, key).setOrigin(0.5, 0.5);
+      const img = this.add.image(width / 2, height, key).setOrigin(0.5, 1);
+      const scaleX = width / img.width;
+      const scaleY = height / img.height;
+      const scale = Math.max(scaleX, scaleY);
+      img.setScale(scale);
       img.setDepth(-100);
     } else {
       const colors = { bg_field:0x2a4a2a, bg_cafe:0x2a1f0f, bg_obsidian:0x1a2030, bg_steps:0x2a3a2a };
       this.add.rectangle(0, 0, width, height, colors[key] || 0x0a0a0f).setOrigin(0, 0).setDepth(-100);
     }
 
-    this._groundY = height - 200;
+    // ground anchor: bottom of the visible bg minus dialogue strip
+    this._groundY = height - 220;
   }
 
   // ─── PLAYER ──────────────────────────────────────────────────────────────
@@ -132,18 +140,18 @@ class E1Scene extends Phaser.Scene {
     const config = this.registry.get('avatarConfig') || {};
     const archetype = config.archetype || 'atk';
     const state     = config.outerwear_state || 'pre_e1';
-    const skin      = config.skin_tone || 'medium';
-    const hair      = config.hair_color || 'black';
 
     const sourceKey = `${archetype}_${state}_idle_0`;
     const useY = (this._groundY !== undefined) ? this._groundY : y;
+    const { height } = this.scale;
 
     if (this.textures.exists(sourceKey)) {
-      const usedKey = window.PaletteSwap
-        ? PaletteSwap.swapPalette(this, sourceKey, `${sourceKey}_${skin}_${hair}`, skin, hair)
-        : sourceKey;
-      const img = this.add.image(x, useY, usedKey).setOrigin(0.5, 1);
-      img.setScale(0.45);
+      // palette swap disabled until colors are recalibrated against sprite pixels.
+      // when re-enabled, wrap: usedKey = PaletteSwap.swapPalette(this, sourceKey, ...)
+      const img = this.add.image(x, useY, sourceKey).setOrigin(0.5, 1);
+      // size to ~32% of canvas height so player is big enough to read in cutscenes
+      const targetH = height * 0.32;
+      img.setScale(targetH / img.height);
       img.setDepth(10);
       return img;
     } else {
@@ -152,25 +160,21 @@ class E1Scene extends Phaser.Scene {
   }
 
   // ─── NPCs ────────────────────────────────────────────────────────────────
-  // use real sprite from NPCRegistry if available, fall back to colored rect.
-  // npcIdOrColor: pass a string npcId ('skeptic', 'walker', 'mark') OR a hex
-  // color number for a placeholder rectangle (backwards compat with old beats).
 
   addNPC(x, y, npcIdOrColor, label) {
     const { height } = this.scale;
     const useY = (this._groundY !== undefined) ? this._groundY : y;
 
-    // if npcIdOrColor is a string, try to load a real sprite
     if (typeof npcIdOrColor === 'string' && window.NPCRegistry) {
       const idleKey = NPCRegistry.getFrame(this, npcIdOrColor, 'idle_1');
       if (idleKey) {
         const sprite = this.add.image(x, useY, idleKey).setOrigin(0.5, 1);
+        // size npcs comparably to player so they read together
         const targetH = height * 0.28;
         sprite.setScale(targetH / sprite.height);
         sprite.setDepth(10);
         sprite.npcId = npcIdOrColor;
 
-        // idle breath cycle
         sprite._idleFrames = ['idle_1', 'idle_2'];
         sprite._frameIdx = 0;
         this.time.addEvent({
@@ -187,7 +191,6 @@ class E1Scene extends Phaser.Scene {
       }
     }
 
-    // fallback: colored rectangle (original behavior, or if sprite missing)
     const color = typeof npcIdOrColor === 'number' ? npcIdOrColor : 0xaa7744;
     const npc = this.add.rectangle(x, useY, 40, 76, color).setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1).setDepth(10);
     if (label) {
@@ -235,7 +238,6 @@ class E1Scene extends Phaser.Scene {
     this._dialogue.show(lines, onComplete);
   }
 
-  // npcId-based combat launch. matches what deployed CombatScene expects.
   launchCombat(npcId, progressKey) {
     this.registry.set('e1Progress', progressKey);
     if (this._dialogue) this._dialogue.cleanup();
@@ -307,7 +309,6 @@ class E1Scene extends Phaser.Scene {
     this.addPlayerSprite(width * 0.25, 0);
     const walker = this.addNPC(width * 0.65, 0, 'walker', 'walker');
 
-    // override idle cycle with uncanny walk loop if frames exist
     if (walker.npcId && window.NPCRegistry) {
       walker._idleFrames = ['walk_1','walk_2','walk_3','walk_4','walk_5','walk_6'];
       walker._frameIdx = 0;
@@ -386,21 +387,17 @@ class E1Scene extends Phaser.Scene {
     this.equipRedJacket();
     this.fadeIn(1000);
     this.drawBg('bg_obsidian');
-    const { width } = this.scale;
+    const { width, height } = this.scale;
 
     const config = this.registry.get('avatarConfig') || {};
     const arch = config.archetype || 'atk';
-    const skin = config.skin_tone || 'medium';
-    const hair = config.hair_color || 'black';
     const srcKey = `${arch}_post_e1_idle_0`;
-    const useY = (this._groundY !== undefined) ? this._groundY : this.scale.height - 200;
+    const useY = (this._groundY !== undefined) ? this._groundY : height - 220;
 
     let playerSprite;
     if (this.textures.exists(srcKey)) {
-      const usedKey = window.PaletteSwap
-        ? PaletteSwap.swapPalette(this, srcKey, `${srcKey}_${skin}_${hair}`, skin, hair)
-        : srcKey;
-      playerSprite = this.add.image(width * 0.5, useY, usedKey).setOrigin(0.5, 1).setScale(0.6).setDepth(10);
+      playerSprite = this.add.image(width * 0.5, useY, srcKey).setOrigin(0.5, 1).setDepth(10);
+      playerSprite.setScale((height * 0.36) / playerSprite.height);
     } else {
       playerSprite = this.add.rectangle(width * 0.5, useY, 40, 80, 0xb32a1f)
         .setStrokeStyle(2, 0xff6644).setOrigin(0.5, 1).setDepth(10);
@@ -468,7 +465,7 @@ class E1Scene extends Phaser.Scene {
 const E1_ENEMIES = {
   skeptic: { key:'skeptic', name:'The Skeptic', hp:22, maxHp:22, atk:6, def:2, spd:4, lck:2, moves:['STRIKE','STRIKE','SLIP'], telegraph:{STRIKE:'winding up', SLIP:'stepping in close'} },
   walker:  { key:'walker',  name:'The Walker',  hp:28, maxHp:28, atk:5, def:4, spd:8, lck:2, moves:['STRIKE','SLIP'], telegraph:{STRIKE:'that new joint is crazy', SLIP:'that new joint is crazy'}, ai:'repeat' },
-  mark:    { key:'mark',    name:'Mark',         hp:45, maxHp:45, atk:5, def:5, spd:5, lck:4,
+  mark:    { key:'mark',    name:'Mark',        hp:45, maxHp:45, atk:5, def:5, spd:5, lck:4,
              moves:['WHISPER','STRIKE','HOLD','WHISPER','LOOP'],
              telegraph:{ WHISPER:"what'd you say your name was?", STRIKE:"i feel like i've seen you before —", HOLD:'you should sit down', LOOP:'you been around here long?' },
              isBoss:true }
