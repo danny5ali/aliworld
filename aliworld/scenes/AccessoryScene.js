@@ -1,9 +1,8 @@
 // aliworld/scenes/AccessoryScene.js
 // loadout screen: 3 equip slots, inventory of owned items, equip/unequip
-// stat bonuses + occasional drawbacks - real tradeoffs
 //
-// icons render as png textures (acc_${id}) loaded by BootScene.
-// falls back to colored circle + letter if texture missing.
+// accessory icon source: 1448x1086px (landscape). scale to fit within target box.
+// icons added to _invContainer so they scroll with it correctly.
 
 class AccessoryScene extends Phaser.Scene {
   constructor() {
@@ -53,23 +52,33 @@ class AccessoryScene extends Phaser.Scene {
   }
 
   // ─── ICON HELPER ─────────────────────────────────────────────────────────
-  // returns an array of display objects (image OR circle+letter).
-  // size = the diameter the icon should occupy.
+  // returns a display object (image or circle+letter) sized to fit within `size` px.
+  // does NOT add to scene — caller adds to container or scene as needed.
 
-  makeIcon(item, x, y, size) {
+  makeIconObj(item, x, y, size) {
     const texKey = `acc_${item.id}`;
     if (this.textures.exists(texKey)) {
-      const img = this.add.image(x, y, texKey).setOrigin(0.5);
-      img.setDisplaySize(size, size);
-      return [img];
+      const tex = this.textures.get(texKey).getSourceImage();
+      const srcW = tex.width;
+      const srcH = tex.height;
+      // scale to fit within size×size box, preserve aspect
+      const scale = size / Math.max(srcW, srcH);
+      const img = this.add.image(x, y, texKey).setOrigin(0.5).setScale(scale);
+      return img;
     }
-    // fallback: colored circle + letter
+    // fallback: colored circle + letter, no children needed
     const color = STAT_COLOR[item.stat] || 0x666677;
-    const circle = this.add.circle(x, y, size / 2, color, 0.85).setStrokeStyle(1, 0xffffff);
+    const g = this.add.graphics();
+    g.fillStyle(color, 0.85);
+    g.lineStyle(1, 0xffffff, 0.9);
+    g.fillCircle(x, y, size / 2);
+    g.strokeCircle(x, y, size / 2);
     const letter = this.add.text(x, y, item.stat[0].toUpperCase(), {
-      fontFamily:'monospace', fontSize:`${Math.floor(size * 0.45)}px`, fontStyle:'bold', color:'#ffffff'
+      fontFamily:'monospace', fontSize:`${Math.floor(size * 0.5)}px`, fontStyle:'bold', color:'#ffffff'
     }).setOrigin(0.5);
-    return [circle, letter];
+    // return as a container so caller handles both as one object
+    const container = this.add.container(0, 0, [g, letter]);
+    return container;
   }
 
   // ─── EQUIP SLOTS ─────────────────────────────────────────────────────────
@@ -99,92 +108,8 @@ class AccessoryScene extends Phaser.Scene {
       }).setOrigin(0.5);
 
       bg.on('pointerup', () => this.unequipSlot(i));
-
-      this._slotObjects.push({ bg, slotNumText, x, y, slotSize, iconObjs: [] });
+      this._slotObjects.push({ bg, slotNumText, x, y, slotSize, iconObj: null });
     }
-  }
-
-  // ─── INVENTORY GRID ──────────────────────────────────────────────────────
-
-  buildInventoryGrid() {
-    this.add.text(20, 320, 'INVENTORY', {
-      fontFamily:'monospace', fontSize:'10px', color:'#666677'
-    });
-
-    this._invContainer = this.add.container(0, 340);
-    this._invTopY = 340;
-  }
-
-  drawInventoryItems() {
-    if (this._invContainer) this._invContainer.removeAll(true);
-
-    const itemSize = 54;
-    const gap = 8;
-    const cols = 4;
-    const iconSize = 36;  // fits inside tile with breathing room
-
-    this._inventory.forEach((item, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = 24 + col * (itemSize + gap) + itemSize / 2;
-      const y = row * (itemSize + gap) + itemSize / 2;
-
-      const isEquipped = this._equipped.some(e => e && e.id === item.id);
-
-      const bg = this.add.rectangle(x, y, itemSize, itemSize, isEquipped ? 0x1a1a2a : 0x0d0d1a)
-        .setStrokeStyle(1, isEquipped ? 0x666677 : 0x222233)
-        .setInteractive({ useHandCursor: true });
-
-      const iconObjs = this.makeIcon(item, x, y - 6, iconSize);
-
-      const name = this.add.text(x, y + itemSize / 2 - 9, item.shortName || item.name.split(' ')[0], {
-        fontFamily:'monospace', fontSize:'8px', color:'#aaaabb'
-      }).setOrigin(0.5);
-
-      const extras = [bg, ...iconObjs, name];
-
-      if (isEquipped) {
-        const eq = this.add.text(x + 22, y - 22, '●', {
-          fontFamily:'monospace', fontSize:'10px', color:'#44cc88'
-        }).setOrigin(0.5);
-        extras.push(eq);
-      }
-
-      const worldY = y + this._invTopY;
-      bg.on('pointerover', () => {
-        bg.setFillStyle(0x1a1a2a);
-        this.showTooltip(item, x, worldY, itemSize);
-      });
-      bg.on('pointerout', () => {
-        bg.setFillStyle(isEquipped ? 0x1a1a2a : 0x0d0d1a);
-        this.hideTooltip();
-      });
-      bg.on('pointerup', () => this.toggleEquip(item));
-
-      this._invContainer.add(extras);
-    });
-  }
-
-  toggleEquip(item) {
-    const equippedIdx = this._equipped.findIndex(e => e && e.id === item.id);
-    if (equippedIdx !== -1) {
-      this._equipped[equippedIdx] = null;
-      this.refreshAll();
-      return;
-    }
-    const emptyIdx = this._equipped.findIndex(s => s === null);
-    if (emptyIdx === -1) {
-      this.showMessage('all slots full. unequip first.');
-      return;
-    }
-    this._equipped[emptyIdx] = item;
-    this.refreshAll();
-  }
-
-  unequipSlot(i) {
-    if (!this._equipped[i]) return;
-    this._equipped[i] = null;
-    this.refreshAll();
   }
 
   // ─── STAT PREVIEW ────────────────────────────────────────────────────────
@@ -212,7 +137,6 @@ class AccessoryScene extends Phaser.Scene {
       if (!item || !item.bonuses) return;
       Object.entries(item.bonuses).forEach(([k, v]) => { bonus[k] = (bonus[k] || 0) + v; });
     });
-
     const lines = [
       'HP  ' + (base.hp + bonus.hp) + (bonus.hp ? `  ${bonus.hp > 0 ? '+' : ''}${bonus.hp}` : ''),
       'ATK ' + (base.atk + bonus.atk) + (bonus.atk ? `  ${bonus.atk > 0 ? '+' : ''}${bonus.atk}` : ''),
@@ -223,18 +147,106 @@ class AccessoryScene extends Phaser.Scene {
     this._statText.setText(lines.join('   '));
   }
 
+  // ─── INVENTORY GRID ──────────────────────────────────────────────────────
+
+  buildInventoryGrid() {
+    this._invLabelY = 300;
+    this._invTopY   = 320;
+
+    this.add.text(20, this._invLabelY, 'INVENTORY', {
+      fontFamily:'monospace', fontSize:'10px', color:'#666677'
+    });
+
+    // container: all items drawn inside so they share the same coordinate space
+    this._invContainer = this.add.container(0, this._invTopY);
+  }
+
+  drawInventoryItems() {
+    this._invContainer.removeAll(true);
+
+    const itemSize = 54;
+    const gap = 8;
+    const cols = 4;
+    const iconSize = 36;
+
+    this._inventory.forEach((item, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = 24 + col * (itemSize + gap) + itemSize / 2;
+      const y = row * (itemSize + gap) + itemSize / 2;
+
+      const isEquipped = this._equipped.some(e => e && e.id === item.id);
+
+      const bg = this.add.rectangle(x, y, itemSize, itemSize, isEquipped ? 0x1a1a2a : 0x0d0d1a)
+        .setStrokeStyle(1, isEquipped ? 0x666677 : 0x222233)
+        .setInteractive({ useHandCursor: true });
+
+      // icon positioned within the container's local space
+      const icon = this.makeIconObj(item, x, y - 6, iconSize);
+
+      const name = this.add.text(x, y + itemSize / 2 - 9, item.shortName || item.name.split(' ')[0], {
+        fontFamily:'monospace', fontSize:'8px', color:'#aaaabb'
+      }).setOrigin(0.5);
+
+      const toAdd = [bg, icon, name];
+
+      if (isEquipped) {
+        const dot = this.add.text(x + 22, y - 22, '●', {
+          fontFamily:'monospace', fontSize:'10px', color:'#44cc88'
+        }).setOrigin(0.5);
+        toAdd.push(dot);
+      }
+
+      const worldY = y + this._invTopY;
+      bg.on('pointerover', () => {
+        bg.setFillStyle(0x1a1a2a);
+        this.showTooltip(item, x, worldY, itemSize);
+      });
+      bg.on('pointerout', () => {
+        bg.setFillStyle(isEquipped ? 0x1a1a2a : 0x0d0d1a);
+        this.hideTooltip();
+      });
+      bg.on('pointerup', () => this.toggleEquip(item));
+
+      this._invContainer.add(toAdd);
+    });
+  }
+
+  toggleEquip(item) {
+    const equippedIdx = this._equipped.findIndex(e => e && e.id === item.id);
+    if (equippedIdx !== -1) {
+      this._equipped[equippedIdx] = null;
+      this.refreshAll();
+      return;
+    }
+    const emptyIdx = this._equipped.findIndex(s => s === null);
+    if (emptyIdx === -1) {
+      this.showMessage('all slots full. unequip first.');
+      return;
+    }
+    this._equipped[emptyIdx] = item;
+    this.refreshAll();
+  }
+
+  unequipSlot(i) {
+    if (!this._equipped[i]) return;
+    this._equipped[i] = null;
+    this.refreshAll();
+  }
+
   // ─── SLOT RENDERING ──────────────────────────────────────────────────────
 
   refreshSlotDisplay() {
     this._slotObjects.forEach((slot, i) => {
-      // clear previous icon objects
-      slot.iconObjs.forEach(o => o.destroy());
-      slot.iconObjs = [];
+      if (slot.iconObj) {
+        slot.iconObj.destroy();
+        slot.iconObj = null;
+      }
 
       const item = this._equipped[i];
       if (item) {
         const iconSize = slot.slotSize - 12;
-        slot.iconObjs = this.makeIcon(item, slot.x, slot.y, iconSize);
+        slot.iconObj = this.makeIconObj(item, slot.x, slot.y, iconSize);
         slot.slotNumText.setVisible(false);
         const color = STAT_COLOR[item.stat] || 0x666677;
         slot.bg.setStrokeStyle(2, color);
@@ -258,17 +270,12 @@ class AccessoryScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const TT_W = 180;
     const TT_H = 64;
-    const SAFE_TOP = 240;   // below stats area
+    const SAFE_TOP = 260;
 
     const tx = Math.min(Math.max(x, TT_W / 2 + 8), width - TT_W / 2 - 8);
-
     let ty = worldY - (itemSize || 54) / 2 - TT_H / 2 - 8;
-    if (ty < SAFE_TOP) {
-      ty = worldY + (itemSize || 54) / 2 + TT_H / 2 + 8;
-    }
-    if (ty + TT_H / 2 > height - 50) {
-      ty = height - 50 - TT_H / 2;
-    }
+    if (ty < SAFE_TOP) ty = worldY + (itemSize || 54) / 2 + TT_H / 2 + 8;
+    if (ty + TT_H / 2 > height - 50) ty = height - 50 - TT_H / 2;
 
     const bonuses = [];
     if (item.bonuses) {
@@ -278,26 +285,15 @@ class AccessoryScene extends Phaser.Scene {
     }
 
     this._tooltip = [
-      this.add.rectangle(tx, ty, TT_W, TT_H, 0x1a1a2a)
-        .setStrokeStyle(1, 0x666677).setDepth(200),
-      this.add.text(tx, ty - 20, item.name, {
-        fontFamily:'monospace', fontSize:'10px', color:'#ebe2d2', fontStyle:'bold'
-      }).setOrigin(0.5).setDepth(201),
-      this.add.text(tx, ty - 4, bonuses.join('   '), {
-        fontFamily:'monospace', fontSize:'10px', color:'#aaaabb'
-      }).setOrigin(0.5).setDepth(201),
-      this.add.text(tx, ty + 14, item.desc || '', {
-        fontFamily:'monospace', fontSize:'9px', color:'#666677',
-        wordWrap:{ width: TT_W - 20 }, align:'center'
-      }).setOrigin(0.5).setDepth(201),
+      this.add.rectangle(tx, ty, TT_W, TT_H, 0x1a1a2a).setStrokeStyle(1, 0x666677).setDepth(200),
+      this.add.text(tx, ty - 20, item.name, { fontFamily:'monospace', fontSize:'10px', color:'#ebe2d2', fontStyle:'bold' }).setOrigin(0.5).setDepth(201),
+      this.add.text(tx, ty - 4, bonuses.join('   '), { fontFamily:'monospace', fontSize:'10px', color:'#aaaabb' }).setOrigin(0.5).setDepth(201),
+      this.add.text(tx, ty + 14, item.desc || '', { fontFamily:'monospace', fontSize:'9px', color:'#666677', wordWrap:{ width: TT_W - 20 }, align:'center' }).setOrigin(0.5).setDepth(201),
     ];
   }
 
   hideTooltip() {
-    if (this._tooltip) {
-      this._tooltip.forEach(o => o.destroy());
-      this._tooltip = null;
-    }
+    if (this._tooltip) { this._tooltip.forEach(o => o.destroy()); this._tooltip = null; }
   }
 
   showMessage(msg) {
@@ -325,8 +321,7 @@ class AccessoryScene extends Phaser.Scene {
 
     const saveBg = this.add.rectangle(this.cx + btnW / 2 + 4, btnY, btnW, 44, 0xb32a1f)
       .setInteractive({ useHandCursor: true });
-    const saveLabel = this.isFirstTime ? 'BEGIN' : 'SAVE';
-    this.add.text(this.cx + btnW / 2 + 4, btnY, saveLabel, {
+    this.add.text(this.cx + btnW / 2 + 4, btnY, this.isFirstTime ? 'BEGIN' : 'SAVE', {
       fontFamily:'monospace', fontSize:'12px', color:'#ebe2d2', fontStyle:'bold'
     }).setOrigin(0.5);
     saveBg.on('pointerover', () => saveBg.setFillStyle(0x8a1f15));
@@ -339,29 +334,20 @@ class AccessoryScene extends Phaser.Scene {
     ps.accessories = this._equipped.filter(Boolean);
     ps.inventory = this._inventory;
     this.registry.set('playerState', ps);
-
     this.cameras.main.fadeOut(400, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start(this.returnScene);
-    });
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start(this.returnScene));
   }
 
   cancel() {
     this.cameras.main.fadeOut(300, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start(this.returnScene);
-    });
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start(this.returnScene));
   }
 }
 
 // ─── ACCESSORY DATA ──────────────────────────────────────────────────────────
 
 const STAT_COLOR = {
-  hp:  0xcc4444,
-  atk: 0xcc8844,
-  def: 0x4488cc,
-  lck: 0xcccc44,
-  spd: 0x44cc88
+  hp: 0xcc4444, atk: 0xcc8844, def: 0x4488cc, lck: 0xcccc44, spd: 0x44cc88
 };
 
 const STARTER_ACCESSORIES = [

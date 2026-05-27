@@ -1,9 +1,6 @@
 // aliworld/scenes/HomeScene.js
-// landing scene for returning players. shows current archetype + jacket state.
-// options: continue, new game (reset progress), loadout
-//
-// NOTE: palette swap is currently disabled. needs source-color recalibration
-// against actual sprite pixels before re-enabling. see drawPlayerPreview().
+// landing scene for returning players.
+// sprite source: 800x1328px. target display ~320px -> scale = 320/1328 ≈ 0.241
 
 class HomeScene extends Phaser.Scene {
   constructor() { super({ key: 'HomeScene' }); }
@@ -50,26 +47,28 @@ class HomeScene extends Phaser.Scene {
   }
 
   drawPlayerPreview() {
+    const { height } = this.scale;
     const config = this.registry.get('avatarConfig') || {};
     const archetype = config.archetype || 'atk';
     const state = config.outerwear_state || 'pre_e1';
     const srcKey = `${archetype}_${state}_idle_0`;
 
+    // center of canvas, offset upward from button area
+    const spriteY = height * 0.46;
+
     if (this.textures.exists(srcKey)) {
-      // palette swap disabled. when re-enabled, replace srcKey below with:
-      //   const skin = config.skin_tone || 'medium';
-      //   const hair = config.hair_color || 'black';
-      //   const finalKey = PaletteSwap.swapPalette(this, srcKey, `${srcKey}_${skin}_${hair}`, skin, hair);
-      const img = this.add.image(this.cx, this.scale.height / 2 - 40, srcKey).setOrigin(0.5, 0.5);
-      const targetH = 320;
-      const scale = Math.min(1, targetH / img.height);
-      img.setScale(scale);
+      // source is 800x1328. target display height ~320px.
+      // scale = 320/1328 = 0.241
+      // setOrigin(0.5, 0.85) so we see the character, not the transparent bottom
+      const img = this.add.image(this.cx, spriteY, srcKey)
+        .setOrigin(0.5, 0.85)
+        .setScale(320 / 1328);
       this.tweens.add({
-        targets: img, y: img.y + 4,
+        targets: img, y: spriteY + 5,
         duration: 2400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'
       });
     } else {
-      this.add.text(this.cx, this.scale.height / 2 - 40, '(loading character...)', {
+      this.add.text(this.cx, spriteY, '(loading character...)', {
         fontFamily: 'monospace', fontSize: '12px', color: '#444455'
       }).setOrigin(0.5);
     }
@@ -118,37 +117,29 @@ class HomeScene extends Phaser.Scene {
 
   confirmNewGame() {
     const { width, height } = this.scale;
-
     const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.85)
       .setOrigin(0, 0).setDepth(500).setInteractive();
-
     const box = this.add.rectangle(this.cx, height/2, width - 60, 220, 0x1a1a2a)
       .setStrokeStyle(2, 0xb32a1f).setDepth(501);
-
     const q = this.add.text(this.cx, height/2 - 50, 'start over?', {
       fontFamily:'monospace', fontSize:'16px', color:'#ebe2d2', fontStyle:'bold'
     }).setOrigin(0.5).setDepth(502);
-
     const detail = this.add.text(this.cx, height/2 - 20, 'all progress will be erased.\nyou will pick a new character.', {
       fontFamily:'monospace', fontSize:'11px', color:'#888899', align:'center'
     }).setOrigin(0.5).setDepth(502);
-
     const yes = this.add.rectangle(this.cx - 80, height/2 + 50, 130, 40, 0xb32a1f)
       .setInteractive({ useHandCursor: true }).setDepth(502);
     this.add.text(this.cx - 80, height/2 + 50, 'YES, RESET', {
       fontFamily:'monospace', fontSize:'12px', color:'#ebe2d2', fontStyle:'bold'
     }).setOrigin(0.5).setDepth(503);
-
     const no = this.add.rectangle(this.cx + 80, height/2 + 50, 130, 40, 0x1a1a2a)
       .setStrokeStyle(1, 0x444455).setInteractive({ useHandCursor: true }).setDepth(502);
     this.add.text(this.cx + 80, height/2 + 50, 'CANCEL', {
       fontFamily:'monospace', fontSize:'12px', color:'#888899'
     }).setOrigin(0.5).setDepth(503);
-
     yes.on('pointerup', () => this.resetProgress());
     no.on('pointerup', () => {
-      overlay.destroy(); box.destroy(); q.destroy(); detail.destroy();
-      yes.destroy(); no.destroy();
+      [overlay, box, q, detail, yes, no].forEach(o => o.destroy());
       this.children.list.filter(c => c.depth >= 502).forEach(c => c.destroy());
     });
   }
@@ -157,24 +148,17 @@ class HomeScene extends Phaser.Scene {
     this.registry.set('e1Progress', null);
     this.registry.set('avatarConfig', null);
     this.registry.set('playerState', null);
-
     try {
       const supabase = window.aliworldSupabase;
       const userId = window.aliworldGame && window.aliworldGame.userId;
       if (supabase && userId) {
         await supabase.from('aw_users').update({
-          archetype: null,
-          skin_tone: 'medium',
-          hair_color: 'black',
-          outerwear_state: 'pre_e1'
+          archetype: null, skin_tone: 'medium', hair_color: 'black', outerwear_state: 'pre_e1'
         }).eq('user_id', userId);
       }
     } catch (e) { console.warn('[HomeScene] reset failed:', e); }
-
     this.cameras.main.fadeOut(600, 0, 0, 0);
-    this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start('IntroScene');
-    });
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('IntroScene'));
   }
 }
 

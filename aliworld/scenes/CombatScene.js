@@ -1,12 +1,6 @@
 // aliworld/scenes/CombatScene.js
-// radial-wheel combat with telegraphed enemy turns, damage numbers,
-// hit-pause, crit flash, real npc sprites via NPCRegistry.
-//
-// hit log: shows the last 3 actions ("you used STRIKE - 6", "skeptic missed")
-// pacing: enemy attacks are fast - stance for 250ms, action + shake for 200ms,
-// back to idle. total under 600ms.
-//
-// palette swap currently disabled. needs source-color recalibration.
+// radial-wheel combat. sprites are 800x1328px source.
+// all sizing uses setScale() against known source height, not setDisplaySize.
 
 class CombatScene extends Phaser.Scene {
   constructor() {
@@ -14,8 +8,8 @@ class CombatScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.npcId       = (data && data.npcId)       || 'walker';
-    this.returnScene = (data && data.returnScene) || 'E1Scene';
+    this.npcId        = (data && data.npcId)       || 'walker';
+    this.returnScene  = (data && data.returnScene) || 'E1Scene';
     this.isTestBattle = !!(data && data.isTestBattle);
 
     this.turn = 0;
@@ -26,15 +20,13 @@ class CombatScene extends Phaser.Scene {
     const ps = this.registry.get('playerState') || {};
     this._ps = ps;
 
-    this.playerArchetype  = ps.archetype       || 'atk';
-    this.skinTone         = ps.skin_tone       || 'medium';
-    this.hairColor        = ps.hair_color      || 'black';
-    this.outerwearState   = ps.outerwear_state || 'pre_e1';
+    this.playerArchetype = ps.archetype       || 'atk';
+    this.outerwearState  = ps.outerwear_state || 'pre_e1';
 
     const eff = this._computeStats(ps);
-    this.playerStats  = eff;
-    this.playerHP     = (ps.hp != null) ? ps.hp : eff.maxHp;
-    this.playerMaxHP  = eff.maxHp;
+    this.playerStats = eff;
+    this.playerHP    = (ps.hp != null) ? ps.hp : eff.maxHp;
+    this.playerMaxHP = eff.maxHp;
 
     const npc = window.NPCRegistry && NPCRegistry.get(this.npcId);
     if (!npc) {
@@ -68,84 +60,117 @@ class CombatScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.cameras.main.width;
-    const H = this.cameras.main.height;
+    const W = this.cameras.main.width;   // 540
+    const H = this.cameras.main.height;  // 960
+
+    // source sprite height for archetype and npc sprites
+    const SRC_H = 1328;
 
     this.cameras.main.fadeIn(300, 0, 0, 0);
     this.add.rectangle(0, 0, W, H, 0x0a0a0a).setOrigin(0, 0);
-    this.add.rectangle(0, H * 0.55, W, 2, 0x222222).setOrigin(0, 0);
 
-    // ─── enemy ────────────────────────────────────────────────────────────
-    // size to a fixed VISIBLE height so all enemies read comparable
+    // arena divider at 50% height
+    const DIVIDER_Y = H * 0.50;
+    this.add.rectangle(0, DIVIDER_Y, W, 2, 0x222222).setOrigin(0, 0);
+
+    // ─── LAYOUT PLAN (all in canvas px) ──────────────────────────────────
+    // enemy name + HP bar: top 80px
+    // enemy sprite: anchored feet at DIVIDER_Y - 20, visible height ~200px
+    // telegraph + log: DIVIDER_Y + 10 to DIVIDER_Y + 80
+    // player label + HP bar: H*0.55 to H*0.60
+    // player sprite: feet at H*0.56, visible height ~200px (above HP bar)
+    // radial wheel: center at H - 90
+
+    // ─── ENEMY ───────────────────────────────────────────────────────────
     this.enemyX = W / 2;
-    this.enemyY = H * 0.32;
-    this.ENEMY_DISPLAY_H = H * 0.26;
+    this.enemyFeetY = DIVIDER_Y - 16;
+
+    // target: enemy sprite appears ~200px tall on screen
+    // source height 1328, scale = 200/1328 ≈ 0.151
+    const ENEMY_SCALE = 200 / SRC_H;
 
     const idleKey = window.NPCRegistry && NPCRegistry.getFrame(this, this.npcId, 'idle_1');
     if (idleKey) {
-      this.enemySprite = this.add.image(this.enemyX, this.enemyY, idleKey).setOrigin(0.5, 1);
-      this.enemySprite.setDisplaySize(
-        this.ENEMY_DISPLAY_H * (this.enemySprite.width / this.enemySprite.height),
-        this.ENEMY_DISPLAY_H
-      );
+      this.enemySprite = this.add.image(this.enemyX, this.enemyFeetY, idleKey)
+        .setOrigin(0.5, 1)
+        .setScale(ENEMY_SCALE);
     } else {
-      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyY, 80, this.ENEMY_DISPLAY_H, 0x554433)
+      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyFeetY, 80, 200, 0x554433)
         .setStrokeStyle(1, 0xffffff).setOrigin(0.5, 1);
       console.warn('[combat] no sprite for', this.npcId);
     }
+    this._enemyScale = ENEMY_SCALE;
 
-    this.add.text(this.enemyX, this.enemyY - this.ENEMY_DISPLAY_H - 30, this.npc.displayName, {
+    const enemyLabelY = 32;
+    this.add.text(this.enemyX, enemyLabelY, this.npc.displayName, {
       fontFamily:'monospace', fontSize:'18px', color:'#f4e8c1'
     }).setOrigin(0.5);
 
-    this.enemyHPBarBg = this.add.rectangle(this.enemyX, this.enemyY - this.ENEMY_DISPLAY_H - 10, 180, 8, 0x333333);
-    this.enemyHPBar   = this.add.rectangle(this.enemyX - 90, this.enemyY - this.ENEMY_DISPLAY_H - 10, 180, 8, 0xcc4444).setOrigin(0, 0.5);
+    this.enemyHPBarBg = this.add.rectangle(this.enemyX, 58, 220, 8, 0x333333);
+    this.enemyHPBar   = this.add.rectangle(this.enemyX - 110, 58, 220, 8, 0xcc4444).setOrigin(0, 0.5);
 
-    // ─── player ───────────────────────────────────────────────────────────
+    // ─── TELEGRAPH + LOG ─────────────────────────────────────────────────
+    this.telegraphText = this.add.text(W / 2, DIVIDER_Y + 12, '', {
+      fontFamily:'monospace', fontSize:'12px', color:'#9a9a9a',
+      align:'center', wordWrap:{ width: W - 40 }
+    }).setOrigin(0.5, 0);
+
+    this.logText = this.add.text(W / 2, DIVIDER_Y + 32, '', {
+      fontFamily:'monospace', fontSize:'11px', color:'#c8b890',
+      align:'center', wordWrap:{ width: W - 40 }, lineSpacing:3
+    }).setOrigin(0.5, 0);
+
+    // ─── PLAYER ───────────────────────────────────────────────────────────
+    // player feet at 62% down canvas, sprite visible above that, above HP bar
     this.playerX = W / 2;
-    this.playerY = H * 0.76;
-    this.PLAYER_DISPLAY_H = H * 0.28;
+    this.playerFeetY = H * 0.62;
+
+    // target: player appears ~190px tall
+    const PLAYER_SCALE = 190 / SRC_H;
 
     const srcKey = `${this.playerArchetype}_${this.outerwearState}_idle_0`;
     if (this.textures.exists(srcKey)) {
-      this.playerSprite = this.add.image(this.playerX, this.playerY, srcKey).setOrigin(0.5, 1);
-      this.playerSprite.setDisplaySize(
-        this.PLAYER_DISPLAY_H * (this.playerSprite.width / this.playerSprite.height),
-        this.PLAYER_DISPLAY_H
-      );
+      this.playerSprite = this.add.image(this.playerX, this.playerFeetY, srcKey)
+        .setOrigin(0.5, 1)
+        .setScale(PLAYER_SCALE);
     } else {
-      this.playerSprite = this.add.rectangle(this.playerX, this.playerY, 80, this.PLAYER_DISPLAY_H, 0x334466).setOrigin(0.5, 1);
+      this.playerSprite = this.add.rectangle(this.playerX, this.playerFeetY, 80, 190, 0x334466)
+        .setOrigin(0.5, 1);
     }
+    this._playerScale = PLAYER_SCALE;
 
-    this.add.text(this.playerX, this.playerY + 10, 'YOU', {
+    // HP bar and label below the player sprite
+    const playerBarY = this.playerFeetY + 16;
+    this.add.text(this.playerX, this.playerFeetY + 2, 'YOU', {
       fontFamily:'monospace', fontSize:'12px', color:'#f4e8c1'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5, 0);
 
-    this.playerHPBarBg = this.add.rectangle(this.playerX, this.playerY + 28, 180, 8, 0x333333);
-    this.playerHPBar   = this.add.rectangle(this.playerX - 90, this.playerY + 28, 180, 8, 0x44cc44).setOrigin(0, 0.5);
+    this.playerHPBarBg = this.add.rectangle(this.playerX, playerBarY + 14, 220, 8, 0x333333);
+    this.playerHPBar   = this.add.rectangle(this.playerX - 110, playerBarY + 14, 220, 8, 0x44cc44).setOrigin(0, 0.5);
 
-    this.playerHPText = this.add.text(this.playerX, this.playerY + 42, '', {
+    this.playerHPText = this.add.text(this.playerX, playerBarY + 28, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#888'
     }).setOrigin(0.5);
+
     this.updateHPBars();
 
-    // ─── telegraph + log ──────────────────────────────────────────────────
-    // telegraph: enemy upcoming intent (above)
-    // log: last 3 lines of action (below enemy, above player)
-
-    this.telegraphText = this.add.text(W / 2, this.enemyY + 12, '', {
-      fontFamily:'monospace', fontSize:'13px', color:'#9a9a9a',
-      align:'center', wordWrap:{ width: W - 60 }
-    }).setOrigin(0.5, 0);
-
-    this.logText = this.add.text(W / 2, H * 0.50, '', {
-      fontFamily:'monospace', fontSize:'11px', color:'#c8b890',
-      align:'center', wordWrap:{ width: W - 60 }, lineSpacing:4
-    }).setOrigin(0.5, 0);
-
-    // ─── radial wheel ─────────────────────────────────────────────────────
+    // ─── RADIAL WHEEL ─────────────────────────────────────────────────────
     this.createRadialWheel();
     this.showTelegraph();
+  }
+
+  // ─── helper: re-apply scale after texture swap ────────────────────────
+
+  _resizeEnemy() {
+    if (this.enemySprite && this.enemySprite.setScale) {
+      this.enemySprite.setScale(this._enemyScale);
+    }
+  }
+
+  _resizePlayer() {
+    if (this.playerSprite && this.playerSprite.setScale) {
+      this.playerSprite.setScale(this._playerScale);
+    }
   }
 
   pushLog(line) {
@@ -158,8 +183,8 @@ class CombatScene extends Phaser.Scene {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
     const cx = W / 2;
-    const cy = H - 90;
-    const r  = 64;
+    const cy = H - 85;
+    const r  = 66;
 
     const ps = this._ps;
     const available = (ps && ps.moves) || ['STRIKE','SLIP','WHISPER','HOLD'];
@@ -221,95 +246,63 @@ class CombatScene extends Phaser.Scene {
   }
 
   applyDamageToEnemy(dmg, crit, moveId) {
-    // player attack frame swap (atk_lunge if available)
     const lungeKey = `${this.playerArchetype}_${this.outerwearState}_atk_lunge`;
     if (this.textures.exists(lungeKey) && this.playerSprite.setTexture) {
       const prev = this.playerSprite.texture.key;
       this.playerSprite.setTexture(lungeKey);
-      // preserve display size
-      this.playerSprite.setDisplaySize(
-        this.PLAYER_DISPLAY_H * (this.playerSprite.width / this.playerSprite.height),
-        this.PLAYER_DISPLAY_H
-      );
+      this._resizePlayer();
       this.time.delayedCall(160, () => {
         if (this.playerSprite.active) {
           this.playerSprite.setTexture(prev);
-          this.playerSprite.setDisplaySize(
-            this.PLAYER_DISPLAY_H * (this.playerSprite.width / this.playerSprite.height),
-            this.PLAYER_DISPLAY_H
-          );
+          this._resizePlayer();
         }
       });
     }
 
-    // enemy shake + flash
-    this.shakeEnemy();
+    this.shakeTarget(this.enemySprite, this.enemyX);
 
     const pauseMs = crit ? 100 : 50;
     this.time.delayedCall(pauseMs, () => {
       this.enemyHP = Math.max(0, this.enemyHP - dmg);
       this.updateHPBars();
-      this.spawnDamageNumber(this.enemyX, this.enemyY - this.ENEMY_DISPLAY_H / 2, dmg, crit);
+      this.spawnDamageNumber(this.enemyX, this.enemyFeetY - 220, dmg, crit);
       this.pushLog(`you used ${moveId}.${dmg > 0 ? ` ${dmg} damage${crit ? '. crit!' : '.'}` : ''}`);
-
       if (crit) this.cameras.main.flash(60, 255, 220, 200);
 
       if (this.enemyHP <= 0) {
         this.pushLog(`${this.npc.displayName.toLowerCase()} is finished.`);
         this.time.delayedCall(600, () => this.victory());
       } else {
-        this.time.delayedCall(500, () => this.enemyTurn());
+        this.time.delayedCall(450, () => this.enemyTurn());
       }
     });
   }
 
-  shakeEnemy() {
-    if (!this.enemySprite || !this.enemySprite.active) return;
-    const baseX = this.enemyX;
+  shakeTarget(sprite, baseX) {
+    if (!sprite || !sprite.active) return;
     this.tweens.add({
-      targets: this.enemySprite, x: baseX - 8, duration: 40, yoyo: true, repeat: 1,
-      onComplete: () => { if (this.enemySprite.active) this.enemySprite.x = baseX; }
+      targets: sprite, x: baseX - 8, duration: 40, yoyo: true, repeat: 1,
+      onComplete: () => { if (sprite.active) sprite.x = baseX; }
     });
   }
-
-  shakePlayer() {
-    if (!this.playerSprite || !this.playerSprite.active) return;
-    const baseX = this.playerX;
-    this.tweens.add({
-      targets: this.playerSprite, x: baseX - 6, duration: 40, yoyo: true, repeat: 1,
-      onComplete: () => { if (this.playerSprite.active) this.playerSprite.x = baseX; }
-    });
-  }
-
-  // ─── ENEMY TURN ──────────────────────────────────────────────────────────
-  // pacing: stance 250ms -> action + shake 200ms -> back to idle. fast.
 
   enemyTurn() {
     this.playerTurn = false;
     const move = this._upcomingMove || NPCRegistry.chooseMove(this.npcId, this.turn);
 
-    // step 1: stance briefly
     const stanceKey = NPCRegistry.getFrame(this, this.npcId, 'attack_stance');
     if (stanceKey && this.enemySprite.setTexture) {
       this.enemySprite.setTexture(stanceKey);
-      this.enemySprite.setDisplaySize(
-        this.ENEMY_DISPLAY_H * (this.enemySprite.width / this.enemySprite.height),
-        this.ENEMY_DISPLAY_H
-      );
+      this._resizeEnemy();
     }
 
     this.time.delayedCall(250, () => {
-      // step 2: action frame + impact on player
       const actionKey = NPCRegistry.getFrame(this, this.npcId, 'attack_action');
       if (actionKey && this.enemySprite.setTexture) {
         this.enemySprite.setTexture(actionKey);
-        this.enemySprite.setDisplaySize(
-          this.ENEMY_DISPLAY_H * (this.enemySprite.width / this.enemySprite.height),
-          this.ENEMY_DISPLAY_H
-        );
+        this._resizeEnemy();
       }
 
-      // damage from npc stats
       let dmg = this.npc.stats.atk;
       if (move === 'WHISPER') dmg = Math.floor(dmg * 0.6);
       if (move === 'SLIP')    dmg = Math.floor(dmg * 0.8);
@@ -318,23 +311,18 @@ class CombatScene extends Phaser.Scene {
       dmg = Math.max(0, dmg + Math.floor((Math.random() - 0.5) * 3));
       const reduced = Math.max(1, dmg - Math.floor(this.playerStats.def / 3));
 
-      // shake player on hit
-      if (reduced > 0) this.shakePlayer();
+      if (reduced > 0) this.shakeTarget(this.playerSprite, this.playerX);
 
       this.time.delayedCall(200, () => {
-        // step 3: back to idle
         const idleKey = NPCRegistry.getFrame(this, this.npcId, 'idle_1');
         if (idleKey && this.enemySprite.setTexture) {
           this.enemySprite.setTexture(idleKey);
-          this.enemySprite.setDisplaySize(
-            this.ENEMY_DISPLAY_H * (this.enemySprite.width / this.enemySprite.height),
-            this.ENEMY_DISPLAY_H
-          );
+          this._resizeEnemy();
         }
 
         this.playerHP = Math.max(0, this.playerHP - reduced);
         this.updateHPBars();
-        this.spawnDamageNumber(this.playerX, this.playerY - this.PLAYER_DISPLAY_H / 2, reduced, false);
+        this.spawnDamageNumber(this.playerX, this.playerFeetY - 210, reduced, false);
         this.pushLog(`${this.npc.displayName.toLowerCase()} used ${move}. ${reduced} damage.`);
 
         if (this.playerHP <= 0) {
