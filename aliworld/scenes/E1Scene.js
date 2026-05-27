@@ -1,14 +1,9 @@
 // aliworld/scenes/E1Scene.js
-// episode 1 - portrait orientation
-// sprite source dimensions: 800x1328px (archetype and npc)
-// canvas: 540x960px
-// player target visible height: ~200px -> scale = 200/1328 ≈ 0.151
-// npc target visible height: ~180px -> scale = 180/1328 ≈ 0.136
+// sprite source: 800x1328 with substantial transparent padding.
+// previous scales (200/1328) were too small. doubled to compensate.
 
 class E1Scene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'E1Scene' });
-  }
+  constructor() { super({ key: 'E1Scene' }); }
 
   init(data) {
     this.combatResult  = data && data.combatResult;
@@ -33,32 +28,26 @@ class E1Scene extends Phaser.Scene {
       let payoff = null;
       if (current === 'skeptic_fight') {
         this.registry.set('e1Progress', 'walker_beat');
-        payoff = {
-          lines: [
-            { speaker: null, text: 'he stops. blinks twice.' },
-            { speaker: null, text: 'walks past you like nothing happened.' },
-            { speaker: null, text: "he won't remember asking." },
-          ]
-        };
+        payoff = { lines: [
+          { speaker: null, text: 'he stops. blinks twice.' },
+          { speaker: null, text: 'walks past you like nothing happened.' },
+          { speaker: null, text: "he won't remember asking." },
+        ]};
       } else if (current === 'walker_fight') {
         this.registry.set('e1Progress', 'cafe_beat');
-        payoff = {
-          lines: [
-            { speaker: null,     text: 'he keeps walking.' },
-            { speaker: 'walker', text: 'that new joint is —' },
-            { speaker: null,     text: "the loop holds. but he's a little quieter now." },
-          ]
-        };
+        payoff = { lines: [
+          { speaker: null,     text: 'he keeps walking.' },
+          { speaker: 'walker', text: 'that new joint is —' },
+          { speaker: null,     text: "the loop holds. but he's a little quieter now." },
+        ]};
       } else if (current === 'mark_fight') {
         this.registry.set('e1Progress', 'obsidian_beat');
-        payoff = {
-          lines: [
-            { speaker: null, text: "mark goes still. his eyes don't move." },
-            { speaker: null, text: "the conversation kept going. it just wasn't with him anymore." },
-            { speaker: null, text: 'on the table behind him, a red jacket.' },
-            { speaker: null, text: "you don't remember seeing it before." },
-          ]
-        };
+        payoff = { lines: [
+          { speaker: null, text: "mark goes still. his eyes don't move." },
+          { speaker: null, text: "the conversation kept going. it just wasn't with him anymore." },
+          { speaker: null, text: 'on the table behind him, a red jacket.' },
+          { speaker: null, text: "you don't remember seeing it before." },
+        ]};
       }
       if (payoff && this.droppedItem) {
         payoff.lines.push(
@@ -70,13 +59,11 @@ class E1Scene extends Phaser.Scene {
     }
 
     const progress = this.registry.get('e1Progress') || 'intro';
-
     if (this._pendingPayoff) {
       const payoff = this._pendingPayoff;
       this._pendingPayoff = null;
       return this.showPayoff(payoff, () => this.routeToProgress(progress));
     }
-
     return this.routeToProgress(progress);
   }
 
@@ -105,9 +92,6 @@ class E1Scene extends Phaser.Scene {
   }
 
   // ─── BACKGROUND ──────────────────────────────────────────────────────────
-  // cover-fit anchored to bottom center.
-  // _groundY is calibrated to where the bg image horizon actually falls.
-
   drawBg(key) {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#000000');
@@ -123,17 +107,13 @@ class E1Scene extends Phaser.Scene {
       this.add.rectangle(0, 0, width, height, colors[key] || 0x0a0a0f).setOrigin(0, 0).setDepth(-100);
     }
 
-    // ground: where characters' feet visually land.
-    // the bg image (landscape photo) has its horizon ~85% down.
-    // dialogue box occupies the bottom ~220px.
-    // so place feet at height - 240 to sit just above the dialogue + just on the horizon.
-    this._groundY = height - 240;
+    // feet land here. ~30% from bottom (above dialogue strip, on horizon line)
+    this._groundY = height - 260;
   }
 
   // ─── PLAYER ──────────────────────────────────────────────────────────────
-  // source: 800x1328. character occupies top ~75% of the canvas (rest is transparent).
-  // scale 200/1328 = 0.151 gives ~200px visible height.
-  // setOrigin(0.5, 0.85) to plant feet rather than the transparent bottom.
+  // source 800x1328 has transparent padding. scale 360/1328 = 0.271 gives ~360px sprite.
+  // setOrigin(0.5, 0.92) plants feet near bottom of canvas (accounting for transparent floor padding).
 
   addPlayerSprite(xRatio) {
     const { width } = this.scale;
@@ -146,18 +126,16 @@ class E1Scene extends Phaser.Scene {
     const key = `${archetype}_${state}_idle_0`;
 
     if (this.textures.exists(key)) {
-      const img = this.add.image(x, y, key)
-        .setOrigin(0.5, 0.85)   // 0.85 approximates where feet are in the 800x1328 canvas
-        .setScale(200 / 1328)
+      return this.add.image(x, y, key)
+        .setOrigin(0.5, 0.92)
+        .setScale(360 / 1328)
         .setDepth(10);
-      return img;
     }
     return this.add.rectangle(x, y, 36, 70, 0x4444cc)
       .setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1).setDepth(10);
   }
 
   // ─── NPCs ────────────────────────────────────────────────────────────────
-
   addNPC(xRatio, npcIdOrColor, label) {
     const { width } = this.scale;
     const x = width * xRatio;
@@ -167,8 +145,8 @@ class E1Scene extends Phaser.Scene {
       const idleKey = NPCRegistry.getFrame(this, npcIdOrColor, 'idle_1');
       if (idleKey) {
         const sprite = this.add.image(x, y, idleKey)
-          .setOrigin(0.5, 0.85)
-          .setScale(180 / 1328)
+          .setOrigin(0.5, 0.92)
+          .setScale(320 / 1328)
           .setDepth(10);
         sprite.npcId = npcIdOrColor;
         sprite._idleFrames = ['idle_1', 'idle_2'];
@@ -179,14 +157,13 @@ class E1Scene extends Phaser.Scene {
             if (!sprite.active) return;
             sprite._frameIdx = (sprite._frameIdx + 1) % sprite._idleFrames.length;
             const k = NPCRegistry.getFrame(this, npcIdOrColor, sprite._idleFrames[sprite._frameIdx]);
-            if (k) { sprite.setTexture(k); sprite.setScale(180 / 1328); }
+            if (k) { sprite.setTexture(k); sprite.setScale(320 / 1328); }
           }
         });
         return sprite;
       }
     }
 
-    // colored rect fallback
     const color = typeof npcIdOrColor === 'number' ? npcIdOrColor : 0xaa7744;
     const rect = this.add.rectangle(x, y, 40, 76, color)
       .setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1).setDepth(10);
@@ -199,7 +176,6 @@ class E1Scene extends Phaser.Scene {
   }
 
   // ─── MENU + FADES ────────────────────────────────────────────────────────
-
   addMenuButton() {
     const { width } = this.scale;
     const bg = this.add.circle(width - 38, 28, 18, 0x1a1a2a)
@@ -214,18 +190,15 @@ class E1Scene extends Phaser.Scene {
     this.cameras.main.fadeIn(d || 600, 0, 0, 0);
     if (cb) this.time.delayedCall(d || 600, cb);
   }
-
   fadeOut(d, cb) {
     this.cameras.main.fadeOut(d || 600, 0, 0, 0);
     if (cb) this.cameras.main.once('camerafadeoutcomplete', cb);
   }
-
   showDialogue(lines, onComplete) {
     if (this._dialogue) this._dialogue.cleanup();
     this._dialogue = new DialogueManager(this);
     this._dialogue.show(lines, onComplete);
   }
-
   launchCombat(npcId, progressKey) {
     this.registry.set('e1Progress', progressKey);
     if (this._dialogue) this._dialogue.cleanup();
@@ -238,8 +211,7 @@ class E1Scene extends Phaser.Scene {
     this.fadeIn(1000);
     this.drawBg('bg_field');
     const { width } = this.scale;
-    const player = this.addPlayerSprite(0.18);
-
+    const player = this.addPlayerSprite(0.25);
     this.showDialogue([
       { speaker:null, text:'where am i.' },
       { speaker:null, text:'what is this place.' },
@@ -283,9 +255,8 @@ class E1Scene extends Phaser.Scene {
     this.fadeIn(600);
     this.drawBg('bg_field');
     this.addMenuButton();
-    const { width } = this.scale;
-    this.addPlayerSprite(0.25);
-    const walker = this.addNPC(0.65, 'walker', 'walker');
+    this.addPlayerSprite(0.3);
+    const walker = this.addNPC(0.7, 'walker', 'walker');
     if (walker.npcId) {
       walker._idleFrames = ['walk_1','walk_2','walk_3','walk_4','walk_5','walk_6'];
       walker._frameIdx = 0;
@@ -304,8 +275,8 @@ class E1Scene extends Phaser.Scene {
   startWalkerFight() {
     this.fadeIn(400);
     this.drawBg('bg_field');
-    this.addPlayerSprite(0.25);
-    this.addNPC(0.65, 'walker', 'walker');
+    this.addPlayerSprite(0.3);
+    this.addNPC(0.7, 'walker', 'walker');
     this.showDialogue([
       { speaker:'walker', text:'that new joint is crazy.' },
       { speaker:null,     text:'he loops back.' }
@@ -317,9 +288,9 @@ class E1Scene extends Phaser.Scene {
     this.drawBg('bg_cafe');
     this.addMenuButton();
     const { width } = this.scale;
-    this.addPlayerSprite(0.2);
+    this.addPlayerSprite(0.25);
     this.addNPC(0.55, 0x888866, null);
-    const mark = this.addNPC(0.8, 'mark', 'mark');
+    const mark = this.addNPC(0.85, 'mark', 'mark');
     this.showDialogue([
       { speaker:null,   text:'the cafe is warm. everyone is talking.' },
       { speaker:null,   text:'nobody looks up. except one.' },
@@ -327,7 +298,7 @@ class E1Scene extends Phaser.Scene {
       { speaker:'mark', text:'you been around here long?' },
     ], () => {
       this.tweens.add({
-        targets: mark, x: width * 0.5, duration: 800, ease:'Linear',
+        targets: mark, x: width * 0.55, duration: 800, ease:'Linear',
         onComplete: () => {
           this.showDialogue([
             { speaker:'mark', text:"i feel like i've seen you before." },
@@ -345,8 +316,8 @@ class E1Scene extends Phaser.Scene {
   startMarkFight() {
     this.fadeIn(400);
     this.drawBg('bg_cafe');
-    this.addPlayerSprite(0.2);
-    this.addNPC(0.5, 'mark', 'mark');
+    this.addPlayerSprite(0.25);
+    this.addNPC(0.55, 'mark', 'mark');
     this.showDialogue([
       { speaker:'mark', text:'you should sit down.' },
       { speaker:null,   text:"he says it again. like it's the first time." }
@@ -365,7 +336,7 @@ class E1Scene extends Phaser.Scene {
 
     if (this.textures.exists(srcKey)) {
       this.add.image(width * 0.5, this._groundY, srcKey)
-        .setOrigin(0.5, 0.85).setScale(200 / 1328).setDepth(10);
+        .setOrigin(0.5, 0.92).setScale(420 / 1328).setDepth(10);
     } else {
       this.add.rectangle(width * 0.5, this._groundY, 40, 80, 0xb32a1f)
         .setStrokeStyle(2, 0xff6644).setOrigin(0.5, 1).setDepth(10);
@@ -426,9 +397,9 @@ class E1Scene extends Phaser.Scene {
 }
 
 const E1_ENEMIES = {
-  skeptic: { key:'skeptic', name:'The Skeptic', hp:22, maxHp:22, atk:6, def:2, spd:4, lck:2, moves:['STRIKE','STRIKE','SLIP'], telegraph:{STRIKE:'winding up', SLIP:'stepping in close'} },
-  walker:  { key:'walker',  name:'The Walker',  hp:28, maxHp:28, atk:5, def:4, spd:8, lck:2, moves:['STRIKE','SLIP'], telegraph:{STRIKE:'that new joint is crazy', SLIP:'that new joint is crazy'} },
-  mark:    { key:'mark',    name:'Mark',        hp:45, maxHp:45, atk:5, def:5, spd:5, lck:4, moves:['WHISPER','STRIKE','HOLD','WHISPER','LOOP'], telegraph:{ WHISPER:"what'd you say your name was?", STRIKE:"i feel like i've seen you before —", HOLD:'you should sit down', LOOP:'you been around here long?' }, isBoss:true }
+  skeptic: { key:'skeptic', name:'The Skeptic', hp:22, maxHp:22, atk:6, def:2, spd:4, lck:2 },
+  walker:  { key:'walker',  name:'The Walker',  hp:28, maxHp:28, atk:5, def:4, spd:8, lck:2 },
+  mark:    { key:'mark',    name:'Mark',        hp:45, maxHp:45, atk:5, def:5, spd:5, lck:4, isBoss:true }
 };
 
 window.E1Scene = E1Scene;

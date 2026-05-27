@@ -1,6 +1,5 @@
 // aliworld/scenes/HomeScene.js
-// landing scene for returning players.
-// sprite source: 800x1328px. target display ~320px -> scale = 320/1328 ≈ 0.241
+// hero sprite scale: 480/1328 ≈ 0.361
 
 class HomeScene extends Phaser.Scene {
   constructor() { super({ key: 'HomeScene' }); }
@@ -10,7 +9,6 @@ class HomeScene extends Phaser.Scene {
     this.cx = width / 2;
 
     this.cameras.main.fadeIn(800, 0, 0, 0);
-
     this.add.rectangle(0, 0, width, height, 0x07070f).setOrigin(0, 0);
     this.drawBackgroundSigil();
 
@@ -53,16 +51,12 @@ class HomeScene extends Phaser.Scene {
     const state = config.outerwear_state || 'pre_e1';
     const srcKey = `${archetype}_${state}_idle_0`;
 
-    // center of canvas, offset upward from button area
-    const spriteY = height * 0.46;
+    const spriteY = height * 0.42;
 
     if (this.textures.exists(srcKey)) {
-      // source is 800x1328. target display height ~320px.
-      // scale = 320/1328 = 0.241
-      // setOrigin(0.5, 0.85) so we see the character, not the transparent bottom
       const img = this.add.image(this.cx, spriteY, srcKey)
-        .setOrigin(0.5, 0.85)
-        .setScale(320 / 1328);
+        .setOrigin(0.5, 0.92)
+        .setScale(480 / 1328);
       this.tweens.add({
         targets: img, y: spriteY + 5,
         duration: 2400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'

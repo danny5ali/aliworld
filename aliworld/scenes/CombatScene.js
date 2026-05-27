@@ -1,11 +1,9 @@
 // aliworld/scenes/CombatScene.js
-// radial-wheel combat. sprites are 800x1328px source.
-// all sizing uses setScale() against known source height, not setDisplaySize.
+// sprite source: 800x1328 with transparent padding.
+// scales: enemy 280/1328 ≈ 0.211, player 320/1328 ≈ 0.241
 
 class CombatScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'CombatScene' });
-  }
+  constructor() { super({ key: 'CombatScene' }); }
 
   init(data) {
     this.npcId        = (data && data.npcId)       || 'walker';
@@ -60,49 +58,32 @@ class CombatScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.cameras.main.width;   // 540
-    const H = this.cameras.main.height;  // 960
-
-    // source sprite height for archetype and npc sprites
+    const W = this.cameras.main.width;
+    const H = this.cameras.main.height;
     const SRC_H = 1328;
 
     this.cameras.main.fadeIn(300, 0, 0, 0);
     this.add.rectangle(0, 0, W, H, 0x0a0a0a).setOrigin(0, 0);
 
-    // arena divider at 50% height
-    const DIVIDER_Y = H * 0.50;
+    const DIVIDER_Y = H * 0.52;
     this.add.rectangle(0, DIVIDER_Y, W, 2, 0x222222).setOrigin(0, 0);
-
-    // ─── LAYOUT PLAN (all in canvas px) ──────────────────────────────────
-    // enemy name + HP bar: top 80px
-    // enemy sprite: anchored feet at DIVIDER_Y - 20, visible height ~200px
-    // telegraph + log: DIVIDER_Y + 10 to DIVIDER_Y + 80
-    // player label + HP bar: H*0.55 to H*0.60
-    // player sprite: feet at H*0.56, visible height ~200px (above HP bar)
-    // radial wheel: center at H - 90
 
     // ─── ENEMY ───────────────────────────────────────────────────────────
     this.enemyX = W / 2;
-    this.enemyFeetY = DIVIDER_Y - 16;
-
-    // target: enemy sprite appears ~200px tall on screen
-    // source height 1328, scale = 200/1328 ≈ 0.151
-    const ENEMY_SCALE = 200 / SRC_H;
+    this.enemyFeetY = DIVIDER_Y - 12;
+    this._enemyScale = 280 / SRC_H;
 
     const idleKey = window.NPCRegistry && NPCRegistry.getFrame(this, this.npcId, 'idle_1');
     if (idleKey) {
       this.enemySprite = this.add.image(this.enemyX, this.enemyFeetY, idleKey)
-        .setOrigin(0.5, 1)
-        .setScale(ENEMY_SCALE);
+        .setOrigin(0.5, 0.92)
+        .setScale(this._enemyScale);
     } else {
-      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyFeetY, 80, 200, 0x554433)
+      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyFeetY, 80, 280, 0x554433)
         .setStrokeStyle(1, 0xffffff).setOrigin(0.5, 1);
-      console.warn('[combat] no sprite for', this.npcId);
     }
-    this._enemyScale = ENEMY_SCALE;
 
-    const enemyLabelY = 32;
-    this.add.text(this.enemyX, enemyLabelY, this.npc.displayName, {
+    this.add.text(this.enemyX, 32, this.npc.displayName, {
       fontFamily:'monospace', fontSize:'18px', color:'#f4e8c1'
     }).setOrigin(0.5);
 
@@ -110,68 +91,50 @@ class CombatScene extends Phaser.Scene {
     this.enemyHPBar   = this.add.rectangle(this.enemyX - 110, 58, 220, 8, 0xcc4444).setOrigin(0, 0.5);
 
     // ─── TELEGRAPH + LOG ─────────────────────────────────────────────────
-    this.telegraphText = this.add.text(W / 2, DIVIDER_Y + 12, '', {
+    this.telegraphText = this.add.text(W / 2, DIVIDER_Y + 14, '', {
       fontFamily:'monospace', fontSize:'12px', color:'#9a9a9a',
       align:'center', wordWrap:{ width: W - 40 }
     }).setOrigin(0.5, 0);
 
-    this.logText = this.add.text(W / 2, DIVIDER_Y + 32, '', {
+    this.logText = this.add.text(W / 2, DIVIDER_Y + 34, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#c8b890',
       align:'center', wordWrap:{ width: W - 40 }, lineSpacing:3
     }).setOrigin(0.5, 0);
 
-    // ─── PLAYER ───────────────────────────────────────────────────────────
-    // player feet at 62% down canvas, sprite visible above that, above HP bar
+    // ─── PLAYER ──────────────────────────────────────────────────────────
     this.playerX = W / 2;
-    this.playerFeetY = H * 0.62;
-
-    // target: player appears ~190px tall
-    const PLAYER_SCALE = 190 / SRC_H;
+    this.playerFeetY = H * 0.78;
+    this._playerScale = 320 / SRC_H;
 
     const srcKey = `${this.playerArchetype}_${this.outerwearState}_idle_0`;
     if (this.textures.exists(srcKey)) {
       this.playerSprite = this.add.image(this.playerX, this.playerFeetY, srcKey)
-        .setOrigin(0.5, 1)
-        .setScale(PLAYER_SCALE);
+        .setOrigin(0.5, 0.92)
+        .setScale(this._playerScale);
     } else {
-      this.playerSprite = this.add.rectangle(this.playerX, this.playerFeetY, 80, 190, 0x334466)
+      this.playerSprite = this.add.rectangle(this.playerX, this.playerFeetY, 80, 320, 0x334466)
         .setOrigin(0.5, 1);
     }
-    this._playerScale = PLAYER_SCALE;
 
-    // HP bar and label below the player sprite
-    const playerBarY = this.playerFeetY + 16;
-    this.add.text(this.playerX, this.playerFeetY + 2, 'YOU', {
+    this.add.text(this.playerX, this.playerFeetY + 4, 'YOU', {
       fontFamily:'monospace', fontSize:'12px', color:'#f4e8c1'
     }).setOrigin(0.5, 0);
 
-    this.playerHPBarBg = this.add.rectangle(this.playerX, playerBarY + 14, 220, 8, 0x333333);
-    this.playerHPBar   = this.add.rectangle(this.playerX - 110, playerBarY + 14, 220, 8, 0x44cc44).setOrigin(0, 0.5);
-
-    this.playerHPText = this.add.text(this.playerX, playerBarY + 28, '', {
+    const barY = this.playerFeetY + 22;
+    this.playerHPBarBg = this.add.rectangle(this.playerX, barY, 220, 8, 0x333333);
+    this.playerHPBar   = this.add.rectangle(this.playerX - 110, barY, 220, 8, 0x44cc44).setOrigin(0, 0.5);
+    this.playerHPText  = this.add.text(this.playerX, barY + 14, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#888'
     }).setOrigin(0.5);
 
     this.updateHPBars();
 
-    // ─── RADIAL WHEEL ─────────────────────────────────────────────────────
     this.createRadialWheel();
     this.showTelegraph();
   }
 
-  // ─── helper: re-apply scale after texture swap ────────────────────────
-
-  _resizeEnemy() {
-    if (this.enemySprite && this.enemySprite.setScale) {
-      this.enemySprite.setScale(this._enemyScale);
-    }
-  }
-
-  _resizePlayer() {
-    if (this.playerSprite && this.playerSprite.setScale) {
-      this.playerSprite.setScale(this._playerScale);
-    }
-  }
+  _resizeEnemy() { if (this.enemySprite && this.enemySprite.setScale) this.enemySprite.setScale(this._enemyScale); }
+  _resizePlayer() { if (this.playerSprite && this.playerSprite.setScale) this.playerSprite.setScale(this._playerScale); }
 
   pushLog(line) {
     this._logLines.push(line);
@@ -183,8 +146,8 @@ class CombatScene extends Phaser.Scene {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
     const cx = W / 2;
-    const cy = H - 85;
-    const r  = 66;
+    const cy = H - 70;
+    const r  = 56;
 
     const ps = this._ps;
     const available = (ps && ps.moves) || ['STRIKE','SLIP','WHISPER','HOLD'];
@@ -196,15 +159,14 @@ class CombatScene extends Phaser.Scene {
     wheel.forEach((moveId, i) => {
       const x = cx + Math.cos(angles[i] * Math.PI / 180) * r;
       const y = cy + Math.sin(angles[i] * Math.PI / 180) * r;
-      const btn = this.add.circle(x, y, 28, colors[moveId] || 0x666666)
+      const btn = this.add.circle(x, y, 24, colors[moveId] || 0x666666)
         .setInteractive({ useHandCursor: true });
-      const label = this.add.text(x, y, moveId, {
-        fontFamily:'monospace', fontSize:'10px', color:'#fff'
+      this.add.text(x, y, moveId, {
+        fontFamily:'monospace', fontSize:'9px', color:'#fff'
       }).setOrigin(0.5);
       btn.on('pointerdown', () => this.playerMove(moveId));
-      this.moveButtons.push({ btn, label });
+      this.moveButtons.push({ btn });
     });
-
     this.add.circle(cx, cy, 4, 0x444444);
   }
 
@@ -235,13 +197,11 @@ class CombatScene extends Phaser.Scene {
     if (moveId === 'WHISPER') dmg = Math.floor(this.playerStats.atk * 0.6);
     if (moveId === 'SLIP')    dmg = Math.floor(this.playerStats.atk * 0.8);
     if (moveId === 'HOLD')    dmg = 0;
-
     if (Math.random() * 100 < this.playerStats.lck * 2) {
       crit = true;
       dmg = Math.floor(dmg * 1.6);
     }
     dmg = Math.max(0, dmg + Math.floor((Math.random() - 0.5) * 3));
-
     this.applyDamageToEnemy(dmg, crit, moveId);
   }
 
@@ -265,7 +225,7 @@ class CombatScene extends Phaser.Scene {
     this.time.delayedCall(pauseMs, () => {
       this.enemyHP = Math.max(0, this.enemyHP - dmg);
       this.updateHPBars();
-      this.spawnDamageNumber(this.enemyX, this.enemyFeetY - 220, dmg, crit);
+      this.spawnDamageNumber(this.enemyX, this.enemyFeetY - 240, dmg, crit);
       this.pushLog(`you used ${moveId}.${dmg > 0 ? ` ${dmg} damage${crit ? '. crit!' : '.'}` : ''}`);
       if (crit) this.cameras.main.flash(60, 255, 220, 200);
 
@@ -322,7 +282,7 @@ class CombatScene extends Phaser.Scene {
 
         this.playerHP = Math.max(0, this.playerHP - reduced);
         this.updateHPBars();
-        this.spawnDamageNumber(this.playerX, this.playerFeetY - 210, reduced, false);
+        this.spawnDamageNumber(this.playerX, this.playerFeetY - 280, reduced, false);
         this.pushLog(`${this.npc.displayName.toLowerCase()} used ${move}. ${reduced} damage.`);
 
         if (this.playerHP <= 0) {
@@ -364,7 +324,6 @@ class CombatScene extends Phaser.Scene {
       ps.maxHp = this.playerMaxHP;
       this.registry.set('playerState', ps);
     }
-
     let droppedItem = null;
     if (!this.isTestBattle && this.npc.drops && Math.random() <= (this.npc.dropChance || 0)) {
       const dropId = this.npc.drops;
@@ -384,13 +343,10 @@ class CombatScene extends Phaser.Scene {
         }
       }
     }
-
     this.cameras.main.fadeOut(400, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start(this.returnScene, {
-        combatResult: 'win',
-        enemyKey: this.npcId,
-        droppedItem: droppedItem
+        combatResult: 'win', enemyKey: this.npcId, droppedItem
       });
     });
   }
@@ -404,9 +360,7 @@ class CombatScene extends Phaser.Scene {
     this.cameras.main.fadeOut(400, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
       this.scene.start(this.returnScene, {
-        combatResult: 'lose',
-        enemyKey: this.npcId,
-        droppedItem: null
+        combatResult: 'lose', enemyKey: this.npcId, droppedItem: null
       });
     });
   }
