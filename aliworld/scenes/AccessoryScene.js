@@ -35,7 +35,7 @@ class AccessoryScene extends Phaser.Scene {
       fontFamily:'monospace', fontSize:'11px', color:'#444455'
     }).setOrigin(0.5);
 
-    this.SLOTS_Y = 130;
+    this.SLOTS_Y = 134;
     this.STATS_Y = 220;
     this.INV_LABEL_Y = 310;
     this.INV_TOP_Y = 330;
@@ -50,15 +50,14 @@ class AccessoryScene extends Phaser.Scene {
   makeIconObj(item, x, y, size) {
     const texKey = `acc_${item.id}`;
     if (this.textures.exists(texKey) && window.SpriteAutoFit) {
-      // place icon centered, scaled so its VISIBLE content fills `size`
-      const tex = this.textures.get(texKey);
+      // place icon centered, scaled so its VISIBLE content fits within `size`
       const sprite = this.add.image(x, y, texKey);
       const bounds = SpriteAutoFit.measure(this, texKey);
       if (bounds) {
         // scale so the larger of visible vw or vh fits in `size`
         const scale = size / Math.max(bounds.vw, bounds.vh);
         sprite.setScale(scale);
-        // origin: center of visible content
+        // origin: center of visible content, so it sits dead-center on (x,y)
         const originX = (bounds.sx + bounds.vw / 2) / bounds.srcW;
         const originY = (bounds.sy + bounds.vh / 2) / bounds.srcH;
         sprite.setOrigin(originX, originY);
@@ -87,7 +86,8 @@ class AccessoryScene extends Phaser.Scene {
     const startX = this.cx - totalW / 2 + slotSize / 2;
     const y = this.SLOTS_Y;
 
-    this.add.text(this.cx, y - 50, 'EQUIPPED', {
+    // label sits a fixed, safe distance above the slot boxes (boxes top at y - 38)
+    this.add.text(this.cx, y - 56, 'EQUIPPED', {
       fontFamily:'monospace', fontSize:'10px', color:'#666677'
     }).setOrigin(0.5);
 
@@ -202,7 +202,8 @@ class AccessoryScene extends Phaser.Scene {
       if (slot.iconObj) { slot.iconObj.destroy(); slot.iconObj = null; }
       const item = this._equipped[i];
       if (item) {
-        const iconSize = slot.slotSize - 12;
+        // keep the icon well inside the box so it never spills onto the label above
+        const iconSize = slot.slotSize - 22;
         slot.iconObj = this.makeIconObj(item, slot.x, slot.y, iconSize);
         slot.slotNumText.setVisible(false);
         const color = STAT_COLOR[item.stat] || 0x666677;

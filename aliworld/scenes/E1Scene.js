@@ -103,8 +103,9 @@ class E1Scene extends Phaser.Scene {
       const colors = { bg_field:0x2a4a2a, bg_cafe:0x2a1f0f, bg_obsidian:0x1a2030, bg_steps:0x2a3a2a };
       this.add.rectangle(0, 0, width, height, colors[key] || 0x0a0a0f).setOrigin(0, 0).setDepth(-100);
     }
-    // feet land at this y. just above the dialogue strip.
-    this._groundY = height - 230;
+    // feet land at this y. dropped lower to meet the grass horizon after cover-fit,
+    // still clears the dialogue strip at the bottom.
+    this._groundY = height - 175;
   }
 
   addPlayerSprite(xRatio) {
@@ -118,7 +119,7 @@ class E1Scene extends Phaser.Scene {
     const key = `${archetype}_${state}_idle_0`;
 
     if (this.textures.exists(key) && window.SpriteAutoFit) {
-      const sprite = SpriteAutoFit.place(this, x, y, key, { targetH: 380 });
+      const sprite = SpriteAutoFit.place(this, x, y, key, { targetH: 300 });
       if (sprite) { sprite.setDepth(10); return sprite; }
     }
     return this.add.rectangle(x, y, 36, 70, 0x4444cc)
@@ -132,8 +133,8 @@ class E1Scene extends Phaser.Scene {
 
     if (typeof npcIdOrColor === 'string' && window.NPCRegistry) {
       const idleKey = NPCRegistry.getFrame(this, npcIdOrColor, 'idle_1');
-      if (idleKey && window.SpriteAutoFit) {
-        const sprite = SpriteAutoFit.place(this, x, y, idleKey, { targetH: 340 });
+      if (idleKey && this.textures.exists(idleKey) && window.SpriteAutoFit) {
+        const sprite = SpriteAutoFit.place(this, x, y, idleKey, { targetH: 300 });
         if (sprite) {
           sprite.setDepth(10);
           sprite.npcId = npcIdOrColor;
@@ -145,7 +146,7 @@ class E1Scene extends Phaser.Scene {
               if (!sprite.active) return;
               sprite._frameIdx = (sprite._frameIdx + 1) % sprite._idleFrames.length;
               const k = NPCRegistry.getFrame(this, npcIdOrColor, sprite._idleFrames[sprite._frameIdx]);
-              if (k) { sprite.setTexture(k); SpriteAutoFit.applyTo(sprite, k, { targetH: 340 }); }
+              if (k && this.textures.exists(k)) { sprite.setTexture(k); SpriteAutoFit.applyTo(sprite, k, { targetH: 300 }); }
             }
           });
           return sprite;
@@ -244,7 +245,14 @@ class E1Scene extends Phaser.Scene {
     this.addPlayerSprite(0.3);
     const walker = this.addNPC(0.7, 'walker', 'walker');
     if (walker.npcId) {
-      walker._idleFrames = ['walk_1','walk_2','walk_3','walk_4','walk_5','walk_6'];
+      // only cycle frames that actually loaded - missing frames render as a
+      // checkerboard (the "white dashes" bug), so filter them out here.
+      const wanted = ['walk_1','walk_2','walk_3','walk_4','walk_5','walk_6'];
+      const have = wanted.filter(f => {
+        const k = NPCRegistry.getFrame(this, 'walker', f);
+        return k && this.textures.exists(k);
+      });
+      walker._idleFrames = have.length ? have : ['idle_1','idle_2'];
       walker._frameIdx = 0;
     }
     this.showDialogue([
@@ -320,7 +328,7 @@ class E1Scene extends Phaser.Scene {
     const srcKey = `${arch}_post_e1_idle_0`;
 
     if (this.textures.exists(srcKey) && window.SpriteAutoFit) {
-      const sprite = SpriteAutoFit.place(this, width * 0.5, this._groundY, srcKey, { targetH: 460 });
+      const sprite = SpriteAutoFit.place(this, width * 0.5, this._groundY, srcKey, { targetH: 420 });
       if (sprite) sprite.setDepth(10);
     } else {
       this.add.rectangle(width * 0.5, this._groundY, 40, 80, 0xb32a1f)

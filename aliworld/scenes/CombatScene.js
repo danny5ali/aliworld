@@ -59,20 +59,21 @@ class CombatScene extends Phaser.Scene {
     this.cameras.main.fadeIn(300, 0, 0, 0);
     this.add.rectangle(0, 0, W, H, 0x0a0a0a).setOrigin(0, 0);
 
-    const DIVIDER_Y = H * 0.52;
+    // divider sits high enough that neither sprite stacks on it.
+    const DIVIDER_Y = H * 0.42;
     this.add.rectangle(0, DIVIDER_Y, W, 2, 0x222222).setOrigin(0, 0);
 
-    // enemy
+    // enemy - upper band, feet above the divider/telegraph strip
     this.enemyX = W / 2;
-    this.enemyFeetY = DIVIDER_Y - 12;
-    this._enemyTargetH = 300;
+    this.enemyFeetY = H * 0.39;
+    this._enemyTargetH = 250;
 
     const idleKey = window.NPCRegistry && NPCRegistry.getFrame(this, this.npcId, 'idle_1');
-    if (idleKey && window.SpriteAutoFit) {
+    if (idleKey && this.textures.exists(idleKey) && window.SpriteAutoFit) {
       this.enemySprite = SpriteAutoFit.place(this, this.enemyX, this.enemyFeetY, idleKey, { targetH: this._enemyTargetH });
     }
     if (!this.enemySprite) {
-      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyFeetY, 80, 300, 0x554433)
+      this.enemySprite = this.add.rectangle(this.enemyX, this.enemyFeetY, 80, 250, 0x554433)
         .setStrokeStyle(1, 0xffffff).setOrigin(0.5, 1);
     }
 
@@ -82,27 +83,27 @@ class CombatScene extends Phaser.Scene {
     this.enemyHPBarBg = this.add.rectangle(this.enemyX, 58, 220, 8, 0x333333);
     this.enemyHPBar   = this.add.rectangle(this.enemyX - 110, 58, 220, 8, 0xcc4444).setOrigin(0, 0.5);
 
-    // telegraph + log
-    this.telegraphText = this.add.text(W / 2, DIVIDER_Y + 14, '', {
+    // telegraph + log get their own clear band right under the divider
+    this.telegraphText = this.add.text(W / 2, DIVIDER_Y + 8, '', {
       fontFamily:'monospace', fontSize:'12px', color:'#9a9a9a',
       align:'center', wordWrap:{ width: W - 40 }
     }).setOrigin(0.5, 0);
-    this.logText = this.add.text(W / 2, DIVIDER_Y + 34, '', {
+    this.logText = this.add.text(W / 2, DIVIDER_Y + 28, '', {
       fontFamily:'monospace', fontSize:'11px', color:'#c8b890',
       align:'center', wordWrap:{ width: W - 40 }, lineSpacing:3
     }).setOrigin(0.5, 0);
 
-    // player
+    // player - lower band, smaller so it clears the telegraph and leaves room for the wheel
     this.playerX = W / 2;
-    this.playerFeetY = H * 0.80;
-    this._playerTargetH = 340;
+    this.playerFeetY = H * 0.78;
+    this._playerTargetH = 220;
 
     const srcKey = `${this.playerArchetype}_${this.outerwearState}_idle_0`;
     if (this.textures.exists(srcKey) && window.SpriteAutoFit) {
       this.playerSprite = SpriteAutoFit.place(this, this.playerX, this.playerFeetY, srcKey, { targetH: this._playerTargetH });
     }
     if (!this.playerSprite) {
-      this.playerSprite = this.add.rectangle(this.playerX, this.playerFeetY, 80, 340, 0x334466).setOrigin(0.5, 1);
+      this.playerSprite = this.add.rectangle(this.playerX, this.playerFeetY, 80, 220, 0x334466).setOrigin(0.5, 1);
     }
 
     this.add.text(this.playerX, this.playerFeetY + 4, 'YOU', {
@@ -141,8 +142,8 @@ class CombatScene extends Phaser.Scene {
     const W = this.cameras.main.width;
     const H = this.cameras.main.height;
     const cx = W / 2;
-    const cy = H - 65;
-    const r  = 54;
+    const cy = H - 88;   // lifted so the bottom node stays on screen
+    const r  = 50;
 
     const ps = this._ps;
     const available = (ps && ps.moves) || ['STRIKE','SLIP','WHISPER','HOLD'];
@@ -217,7 +218,7 @@ class CombatScene extends Phaser.Scene {
     this.time.delayedCall(pauseMs, () => {
       this.enemyHP = Math.max(0, this.enemyHP - dmg);
       this.updateHPBars();
-      this.spawnDamageNumber(this.enemyX, this.enemyFeetY - 260, dmg, crit);
+      this.spawnDamageNumber(this.enemyX, this.enemyFeetY - 130, dmg, crit);
       this.pushLog(`you used ${moveId}.${dmg > 0 ? ` ${dmg} damage${crit ? '. crit!' : '.'}` : ''}`);
       if (crit) this.cameras.main.flash(60, 255, 220, 200);
       if (this.enemyHP <= 0) {
@@ -242,14 +243,14 @@ class CombatScene extends Phaser.Scene {
     const move = this._upcomingMove || NPCRegistry.chooseMove(this.npcId, this.turn);
 
     const stanceKey = NPCRegistry.getFrame(this, this.npcId, 'attack_stance');
-    if (stanceKey && this.enemySprite.setTexture) {
+    if (stanceKey && this.textures.exists(stanceKey) && this.enemySprite.setTexture) {
       this.enemySprite.setTexture(stanceKey);
       this._refitEnemy(stanceKey);
     }
 
     this.time.delayedCall(250, () => {
       const actionKey = NPCRegistry.getFrame(this, this.npcId, 'attack_action');
-      if (actionKey && this.enemySprite.setTexture) {
+      if (actionKey && this.textures.exists(actionKey) && this.enemySprite.setTexture) {
         this.enemySprite.setTexture(actionKey);
         this._refitEnemy(actionKey);
       }
@@ -266,14 +267,14 @@ class CombatScene extends Phaser.Scene {
 
       this.time.delayedCall(200, () => {
         const idleKey = NPCRegistry.getFrame(this, this.npcId, 'idle_1');
-        if (idleKey && this.enemySprite.setTexture) {
+        if (idleKey && this.textures.exists(idleKey) && this.enemySprite.setTexture) {
           this.enemySprite.setTexture(idleKey);
           this._refitEnemy(idleKey);
         }
 
         this.playerHP = Math.max(0, this.playerHP - reduced);
         this.updateHPBars();
-        this.spawnDamageNumber(this.playerX, this.playerFeetY - 300, reduced, false);
+        this.spawnDamageNumber(this.playerX, this.playerFeetY - 110, reduced, false);
         this.pushLog(`${this.npc.displayName.toLowerCase()} used ${move}. ${reduced} damage.`);
 
         if (this.playerHP <= 0) {
