@@ -1,5 +1,4 @@
 // aliworld/scenes/HomeScene.js
-// hero sprite scale: 480/1328 ≈ 0.361
 
 class HomeScene extends Phaser.Scene {
   constructor() { super({ key: 'HomeScene' }); }
@@ -12,12 +11,12 @@ class HomeScene extends Phaser.Scene {
     this.add.rectangle(0, 0, width, height, 0x07070f).setOrigin(0, 0);
     this.drawBackgroundSigil();
 
-    this.add.text(this.cx, 70, 'ALIWORLD', {
+    this.add.text(this.cx, 60, 'ALIWORLD', {
       fontFamily: 'monospace', fontSize: '32px', color: '#ebe2d2', fontStyle: 'bold'
     }).setOrigin(0.5);
 
     const handle = (window.aliworldGame && window.aliworldGame.userHandle) || 'unknown';
-    this.add.text(this.cx, 108, handle, {
+    this.add.text(this.cx, 96, handle, {
       fontFamily: 'monospace', fontSize: '11px', color: '#555566'
     }).setOrigin(0.5);
 
@@ -38,6 +37,7 @@ class HomeScene extends Phaser.Scene {
     g.closePath();
     g.strokePath();
     g.lineBetween(cx - s * 0.4, cy + s * 0.5, cx + s * 0.4, cy + s * 0.5);
+    g.setDepth(-1);
     this.tweens.add({
       targets: g, alpha: { from: 0.5, to: 1 },
       duration: 3500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
@@ -51,18 +51,20 @@ class HomeScene extends Phaser.Scene {
     const state = config.outerwear_state || 'pre_e1';
     const srcKey = `${archetype}_${state}_idle_0`;
 
-    const spriteY = height * 0.42;
+    // feet land at this y. above the button block (which starts at height - 280)
+    const feetY = height * 0.66;
 
-    if (this.textures.exists(srcKey)) {
-      const img = this.add.image(this.cx, spriteY, srcKey)
-        .setOrigin(0.5, 0.92)
-        .setScale(480 / 1328);
-      this.tweens.add({
-        targets: img, y: spriteY + 5,
-        duration: 2400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'
-      });
+    if (this.textures.exists(srcKey) && window.SpriteAutoFit) {
+      const sprite = SpriteAutoFit.place(this, this.cx, feetY, srcKey, { targetH: 500 });
+      if (sprite) {
+        sprite.setDepth(1);
+        this.tweens.add({
+          targets: sprite, y: feetY + 5,
+          duration: 2400, yoyo: true, repeat: -1, ease:'Sine.easeInOut'
+        });
+      }
     } else {
-      this.add.text(this.cx, spriteY, '(loading character...)', {
+      this.add.text(this.cx, feetY - 100, '(loading character...)', {
         fontFamily: 'monospace', fontSize: '12px', color: '#444455'
       }).setOrigin(0.5);
     }
@@ -74,17 +76,17 @@ class HomeScene extends Phaser.Scene {
     const hasProgress = e1Progress && e1Progress !== 'intro';
 
     const btnX = this.cx;
-    const startY = height - 280;
-    const gap = 14;
-    const btnH = 50;
+    const startY = height - 230;
+    const gap = 12;
+    const btnH = 46;
     const btnW = width - 60;
 
     const continueLabel = hasProgress ? 'CONTINUE' : 'BEGIN EPISODE 1';
-    const cBg = this.add.rectangle(btnX, startY, btnW, btnH, 0xb32a1f)
+    const cBg = this.add.rectangle(btnX, startY, btnW, btnH, 0xb32a1f).setDepth(10)
       .setInteractive({ useHandCursor: true });
     this.add.text(btnX, startY, continueLabel, {
       fontFamily:'monospace', fontSize:'14px', color:'#ebe2d2', fontStyle:'bold'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(11);
     cBg.on('pointerover', () => cBg.setFillStyle(0x8a1f15));
     cBg.on('pointerout',  () => cBg.setFillStyle(0xb32a1f));
     cBg.on('pointerup',   () => {
@@ -93,19 +95,19 @@ class HomeScene extends Phaser.Scene {
     });
 
     const lY = startY + btnH + gap;
-    const lBg = this.add.rectangle(btnX, lY, btnW, btnH, 0x1a1a2a)
+    const lBg = this.add.rectangle(btnX, lY, btnW, btnH, 0x1a1a2a).setDepth(10)
       .setStrokeStyle(1, 0x444455).setInteractive({ useHandCursor: true });
     this.add.text(btnX, lY, 'LOADOUT', {
       fontFamily:'monospace', fontSize:'13px', color:'#888899'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(11);
     lBg.on('pointerup', () => this.scene.start('AccessoryScene', { returnScene: 'HomeScene' }));
 
     const nY = lY + btnH + gap;
-    const nBg = this.add.rectangle(btnX, nY, btnW, btnH, 0x1a1a2a)
+    const nBg = this.add.rectangle(btnX, nY, btnW, btnH, 0x1a1a2a).setDepth(10)
       .setStrokeStyle(1, 0x333344).setInteractive({ useHandCursor: true });
     this.add.text(btnX, nY, 'NEW GAME', {
       fontFamily:'monospace', fontSize:'13px', color:'#666677'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(11);
     nBg.on('pointerup', () => this.confirmNewGame());
   }
 

@@ -1,6 +1,5 @@
 // aliworld/scenes/E1Scene.js
-// sprite source: 800x1328 with substantial transparent padding.
-// previous scales (200/1328) were too small. doubled to compensate.
+// uses SpriteAutoFit so scales and origins work regardless of transparent padding.
 
 class E1Scene extends Phaser.Scene {
   constructor() { super({ key: 'E1Scene' }); }
@@ -91,11 +90,9 @@ class E1Scene extends Phaser.Scene {
     this.time.delayedCall(600, () => this.showDialogue(payoff.lines, onComplete));
   }
 
-  // ─── BACKGROUND ──────────────────────────────────────────────────────────
   drawBg(key) {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#000000');
-
     if (this.textures.exists(key)) {
       const img = this.add.image(width / 2, height, key).setOrigin(0.5, 1);
       const scaleX = width  / img.width;
@@ -106,14 +103,9 @@ class E1Scene extends Phaser.Scene {
       const colors = { bg_field:0x2a4a2a, bg_cafe:0x2a1f0f, bg_obsidian:0x1a2030, bg_steps:0x2a3a2a };
       this.add.rectangle(0, 0, width, height, colors[key] || 0x0a0a0f).setOrigin(0, 0).setDepth(-100);
     }
-
-    // feet land here. ~30% from bottom (above dialogue strip, on horizon line)
-    this._groundY = height - 260;
+    // feet land at this y. just above the dialogue strip.
+    this._groundY = height - 230;
   }
-
-  // ─── PLAYER ──────────────────────────────────────────────────────────────
-  // source 800x1328 has transparent padding. scale 360/1328 = 0.271 gives ~360px sprite.
-  // setOrigin(0.5, 0.92) plants feet near bottom of canvas (accounting for transparent floor padding).
 
   addPlayerSprite(xRatio) {
     const { width } = this.scale;
@@ -125,17 +117,14 @@ class E1Scene extends Phaser.Scene {
     const state     = config.outerwear_state || 'pre_e1';
     const key = `${archetype}_${state}_idle_0`;
 
-    if (this.textures.exists(key)) {
-      return this.add.image(x, y, key)
-        .setOrigin(0.5, 0.92)
-        .setScale(360 / 1328)
-        .setDepth(10);
+    if (this.textures.exists(key) && window.SpriteAutoFit) {
+      const sprite = SpriteAutoFit.place(this, x, y, key, { targetH: 380 });
+      if (sprite) { sprite.setDepth(10); return sprite; }
     }
     return this.add.rectangle(x, y, 36, 70, 0x4444cc)
       .setStrokeStyle(2, 0xffffff).setOrigin(0.5, 1).setDepth(10);
   }
 
-  // ─── NPCs ────────────────────────────────────────────────────────────────
   addNPC(xRatio, npcIdOrColor, label) {
     const { width } = this.scale;
     const x = width * xRatio;
@@ -143,24 +132,24 @@ class E1Scene extends Phaser.Scene {
 
     if (typeof npcIdOrColor === 'string' && window.NPCRegistry) {
       const idleKey = NPCRegistry.getFrame(this, npcIdOrColor, 'idle_1');
-      if (idleKey) {
-        const sprite = this.add.image(x, y, idleKey)
-          .setOrigin(0.5, 0.92)
-          .setScale(320 / 1328)
-          .setDepth(10);
-        sprite.npcId = npcIdOrColor;
-        sprite._idleFrames = ['idle_1', 'idle_2'];
-        sprite._frameIdx = 0;
-        this.time.addEvent({
-          delay: 1200, loop: true,
-          callback: () => {
-            if (!sprite.active) return;
-            sprite._frameIdx = (sprite._frameIdx + 1) % sprite._idleFrames.length;
-            const k = NPCRegistry.getFrame(this, npcIdOrColor, sprite._idleFrames[sprite._frameIdx]);
-            if (k) { sprite.setTexture(k); sprite.setScale(320 / 1328); }
-          }
-        });
-        return sprite;
+      if (idleKey && window.SpriteAutoFit) {
+        const sprite = SpriteAutoFit.place(this, x, y, idleKey, { targetH: 340 });
+        if (sprite) {
+          sprite.setDepth(10);
+          sprite.npcId = npcIdOrColor;
+          sprite._idleFrames = ['idle_1', 'idle_2'];
+          sprite._frameIdx = 0;
+          this.time.addEvent({
+            delay: 1200, loop: true,
+            callback: () => {
+              if (!sprite.active) return;
+              sprite._frameIdx = (sprite._frameIdx + 1) % sprite._idleFrames.length;
+              const k = NPCRegistry.getFrame(this, npcIdOrColor, sprite._idleFrames[sprite._frameIdx]);
+              if (k) { sprite.setTexture(k); SpriteAutoFit.applyTo(sprite, k, { targetH: 340 }); }
+            }
+          });
+          return sprite;
+        }
       }
     }
 
@@ -175,7 +164,6 @@ class E1Scene extends Phaser.Scene {
     return rect;
   }
 
-  // ─── MENU + FADES ────────────────────────────────────────────────────────
   addMenuButton() {
     const { width } = this.scale;
     const bg = this.add.circle(width - 38, 28, 18, 0x1a1a2a)
@@ -204,8 +192,6 @@ class E1Scene extends Phaser.Scene {
     if (this._dialogue) this._dialogue.cleanup();
     this.fadeOut(400, () => this.scene.start('CombatScene', { npcId, returnScene: 'E1Scene' }));
   }
-
-  // ─── BEATS ───────────────────────────────────────────────────────────────
 
   startIntro() {
     this.fadeIn(1000);
@@ -329,14 +315,13 @@ class E1Scene extends Phaser.Scene {
     this.fadeIn(1000);
     this.drawBg('bg_obsidian');
     const { width } = this.scale;
-
     const config = this.registry.get('avatarConfig') || {};
     const arch = config.archetype || 'atk';
     const srcKey = `${arch}_post_e1_idle_0`;
 
-    if (this.textures.exists(srcKey)) {
-      this.add.image(width * 0.5, this._groundY, srcKey)
-        .setOrigin(0.5, 0.92).setScale(420 / 1328).setDepth(10);
+    if (this.textures.exists(srcKey) && window.SpriteAutoFit) {
+      const sprite = SpriteAutoFit.place(this, width * 0.5, this._groundY, srcKey, { targetH: 460 });
+      if (sprite) sprite.setDepth(10);
     } else {
       this.add.rectangle(width * 0.5, this._groundY, 40, 80, 0xb32a1f)
         .setStrokeStyle(2, 0xff6644).setOrigin(0.5, 1).setDepth(10);
